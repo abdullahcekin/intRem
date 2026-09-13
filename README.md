@@ -43,7 +43,7 @@ API ve oturum çalıştırıcısı ayrı süreçlerdir. Veri SQLite'ta saklanır
 | OmniRoute | Sağlık görünümü var; hesap havuzu ve bütçeli fallback açık iş |
 | Codex | Kalıcı inceleme kuyruğu, salt okunur çalıştırma, iptal ve değişen kod kontrolü uygulandı; gerçek VDS CLI pilotu geçti |
 
-Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin mesajını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Kaynak zaman damgaları SDK tarafından verilmediğinden aktarılan mesajların zamanı aktarım anıdır. Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Plan içeriği elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
+Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin mesajını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Kaynak zaman damgaları SDK tarafından verilmediğinden aktarılan mesajların zamanı aktarım anıdır. Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Plan içeriği CLI'nin `PreToolUse` hook girdisinden mevcut insan kararına aktarılır; hook kendiliğinden onay vermez. İçerik elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
 
 ## Yerel çalıştırma
 
@@ -76,3 +76,5 @@ Tarayıcı kontrolü geçici SQLite verisi ve sanal WebAuthn cihazı kullanır; 
 [GitHub Actions](https://github.com/abdullahcekin/intRem/actions/workflows/check.yml), her push ve pull request için Node.js 22 üzerinde bağımlılık kurulumu, tip kontrolü, birim/entegrasyon testleri, üretim derlemesi ve Chromium tarayıcı akışlarını çalıştırır. Gerçek Claude/Codex çağrıları ve fiziksel telefon kabulü CI'dan ayrı yürütülür.
 
 `scripts/live-review.mjs`, açıkça seçilen pilot Git projesinde gerçek Codex incelemesini doğrular. `scripts/service-pilot.mjs`, kurulu runner üzerinden gerçek `AskUserQuestion` callback'ini sınar; kayıtlar pilot oturumunda kalır. Her ikisi için `INTREM_PILOT_PROJECT` gerekir. Soru testinde yalnız beklenen pilot sorusuna yanıt verilir; diğer araç istekleri reddedilir. `INTREM_PILOT_MODEL`, yalnız bu testin oluşturduğu oturumun modelini seçer.
+
+`scripts/service-plan-pilot.mjs`, Linux'taki kurulu runner üzerinde somut plan onayını sınar. Aynı environment ile `INTREM_PILOT_PROJECT=/path/to/pilot INTREM_PILOT_MODEL=sonnet node scripts/service-plan-pilot.mjs` çalıştırılır. Ayrı bir pilot alt dizini oluşturur; yalnız beklenen sentetik planı bir kez onaylar ve onay sonrası kullanılan metni hook kanıtıyla karşılaştırır. Genel Claude ayarlarını değiştirmez, ikinci runner başlatmaz. Başarılı veya başarısız bitişte yalnız kendi oturumuna kontrollü stop ister. Kayıtlar teşhis için korunur; fiziksel telefon kabulü ayrıca yapılmalıdır.

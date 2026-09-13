@@ -2,7 +2,7 @@ import { afterEach, beforeEach, describe, expect, it, vi } from 'vitest';
 import { mkdtemp, rm } from 'node:fs/promises';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
-import type { CanUseTool, Options, SDKMessage, SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import type { CanUseTool, Options, SDKMessage, SDKUserMessage, SyncHookJSONOutput } from '@anthropic-ai/claude-agent-sdk';
 import { Store } from '../src/server/store.js';
 import { Runner, type RuntimeQuery } from '../src/runtime/runner.js';
 
@@ -171,9 +171,125 @@ describe('SDK runner kalıcı kuyruk ve callback yaşam döngüsü', () => {
     expect(store.getInteraction(interaction.id)?.appliedAt).toBeNull();
   });
 
+  it('tüketicisiz kalan kararı iptal eder; diğer callbacki korur ve kontrol açılınca kuyruk ilerler', async () => {
+    const message = enqueue(); await runner.tick();
+    const controller = new AbortController();
+    const abandoned = tool('Bash', { command: 'git status' }, controller.signal);
+    const first = store.listInteractions(sessionId)[0];
+    const remaining = tool('AskUserQuestion', { questions: [{ question: 'Devam?', options: [{ label: 'Evet' }] }] });
+    const second = store.listInteractions(sessionId).find(value => value.id !== first.id)!;
+    store.decideInteraction(first.id, { generation: first.generation, contentHash: first.contentHash, deviceId: 'test-device', decision: { behavior: 'allow' } });
+    controller.abort();
+    expect(await abandoned).toMatchObject({ behavior: 'deny' });
+    expect(store.getInteraction(first.id)).toMatchObject({ status: 'cancelled', appliedAt: null });
+    expect(store.getInteraction(second.id)?.status).toBe('pending');
+    store.setSetting('remoteControlEnabled', false);
+    expect(await remaining).toMatchObject({ behavior: 'deny' });
+    expect(store.getInteraction(second.id)?.status).toBe('cancelled');
+    query.emit({ type: 'result', subtype: 'success', session_id: 'sdk-session', result: 'Tur tamamlandı.', is_error: false });
+    await until(() => store.listMessages(sessionId).find(value => value.id === message.id)?.state === 'completed');
+    store.setSetting('remoteControlEnabled', true);
+    enqueue('Yeni komut'); await runner.tick();
+    await until(() => query.inputs.length === 2);
+  });
+
+  it('stop gecikmeli iterator kapanışını bekler; Store kapandıktan sonra olay yazmaz', async () => {
+    const stoppingStore = new Store(path.join(directory, 'stopping.db'));
+    const project = stoppingStore.createProject({ name: 'Shutdown', cwd: directory, host: 'localhost' });
+    const session = stoppingStore.createSession({ projectId: project.id });
+    stoppingStore.enqueueMessage(session.id, { clientId: crypto.randomUUID(), text: 'Başla', generation: session.generation });
+    let iteratorFinished = false;
+    let rejectRead: (error: Error) => void = () => undefined;
+    const delayedQuery: RuntimeQuery = {
+      interrupt: async () => undefined,
+      close: () => { setTimeout(() => { iteratorFinished = true; rejectRead(new Error('Late iterator rejection')); }, 30); },
+      [Symbol.asyncIterator]: () => ({ next: () => new Promise((_resolve, reject) => { rejectRead = reject; }) }),
+    };
+    const stoppingRunner = new Runner(stoppingStore, { allowedRoots: [directory], claudeHome: directory, query: () => delayedQuery });
+    await stoppingRunner.start();
+    await stoppingRunner.stop();
+    const finishedAtStop = iteratorFinished;
+    const writes = vi.spyOn(stoppingStore, 'event');
+    stoppingStore.close();
+    await new Promise(resolve => setTimeout(resolve, 50));
+    expect(finishedAtStop).toBe(true);
+    expect(writes).not.toHaveBeenCalled();
+  });
+
   it('somut plan içermeyen ExitPlanMode çağrısına uygulanabilir onay üretmez', async () => {
     enqueue(); await runner.tick();
     expect(await tool('ExitPlanMode', {})).toMatchObject({ behavior: 'deny' });
     expect(store.listInteractions(sessionId)).toEqual([]);
+  });
+
+  it('ExitPlanMode hook planını otomatik onaylamadan mevcut karar kapısına taşır', async () => {
+    enqueue(); await runner.tick();
+    const hook = query.options.hooks?.PreToolUse?.find(entry => entry.matcher === 'ExitPlanMode')?.hooks[0];
+    expect(hook).toBeDefined();
+    const signal = new AbortController().signal;
+    const toolUseID = crypto.randomUUID();
+    const input = { plan: 'Yalnız test çalıştır.', planFilePath: path.join(directory, 'plan.md'), allowedPrompts: [] };
+    const event = { hook_event_name: 'PreToolUse' as const, session_id: 'sdk-session', cwd: directory, transcript_path: '', tool_name: 'ExitPlanMode', tool_use_id: toolUseID, tool_input: input };
+    for (const missing of [{}, { plan: ' ' }]) {
+      expect(await hook!({ ...event, tool_input: missing }, toolUseID, { signal })).toMatchObject({ hookSpecificOutput: { permissionDecision: 'deny' } });
+    }
+    const result = await hook!(event, toolUseID, { signal }) as SyncHookJSONOutput;
+    expect(result).toEqual({ hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', updatedInput: input } });
+    expect(store.listInteractions(sessionId)).toEqual([]);
+    const forwarded = (result.hookSpecificOutput as { updatedInput: Record<string, unknown> }).updatedInput;
+    input.plan = 'Başka bir plan';
+    expect(forwarded.plan).toBe('Yalnız test çalıştır.');
+    const pending = query.options.canUseTool!('ExitPlanMode', forwarded, { signal, toolUseID, requestId: toolUseID });
+    const interaction = store.listInteractions(sessionId)[0];
+    expect(interaction).toMatchObject({ kind: 'plan', input: forwarded, requestId: toolUseID, status: 'pending', appliedAt: null });
+    store.decideInteraction(interaction.id, { generation: interaction.generation, contentHash: interaction.contentHash, deviceId: 'test-device', decision: { behavior: 'allow' } });
+    expect(await pending).toEqual({ behavior: 'allow', updatedInput: forwarded });
+  });
+
+  it('SDK plan snapshotını oturum, nesil ve istek kimliğine bağlar; aynı kararı tekrar uygulamaz', async () => {
+    enqueue(); await runner.tick();
+    const input = { plan: '# Uygulama planı\n\n1. Dar değişikliği yap.\n2. Testi çalıştır.', planFilePath: path.join(directory, 'sdk-plan.md'), allowedPrompts: [] };
+    const callback = { signal: new AbortController().signal, requestId: crypto.randomUUID(), toolUseID: crypto.randomUUID() };
+    const pending = query.options.canUseTool!('ExitPlanMode', input, callback);
+    const interaction = store.listInteractions(sessionId)[0];
+    expect(interaction).toMatchObject({ sessionId, generation: store.getSession(sessionId)!.generation, requestId: callback.requestId, kind: 'plan', toolName: 'ExitPlanMode', input });
+    store.decideInteraction(interaction.id, { generation: interaction.generation, contentHash: interaction.contentHash, deviceId: 'test-device', decision: { behavior: 'allow' } });
+    expect(await pending).toEqual({ behavior: 'allow', updatedInput: input });
+    expect(store.getInteraction(interaction.id)?.appliedAt).not.toBeNull();
+    expect(await query.options.canUseTool!('ExitPlanMode', input, callback)).toMatchObject({ behavior: 'deny' });
+    expect(store.listInteractions(sessionId)).toHaveLength(1);
+  });
+
+  it('onay beklerken plan metni değişirse eski içerik onayını uygulamaz', async () => {
+    enqueue(); await runner.tick();
+    const input = { plan: 'Yalnız test dosyasını değiştir.' };
+    const pending = tool('ExitPlanMode', input);
+    const interaction = store.listInteractions(sessionId)[0];
+    input.plan = 'Uygulama dosyalarını da değiştir.';
+    expect(store.getInteraction(interaction.id)?.input.plan).toBe('Yalnız test dosyasını değiştir.');
+    store.decideInteraction(interaction.id, { generation: interaction.generation, contentHash: interaction.contentHash, deviceId: 'test-device', decision: { behavior: 'allow' } });
+    expect(await pending).toMatchObject({ behavior: 'deny' });
+    expect(store.getInteraction(interaction.id)?.appliedAt).toBeNull();
+  });
+
+  it('onay kaydedildikten sonra nesli değişen planı yeni oturuma uygulamaz', async () => {
+    enqueue(); await runner.tick();
+    const pending = tool('ExitPlanMode', { plan: 'Onay bekleyen plan.' });
+    const interaction = store.listInteractions(sessionId)[0];
+    store.decideInteraction(interaction.id, { generation: interaction.generation, contentHash: interaction.contentHash, deviceId: 'test-device', decision: { behavior: 'allow' } });
+    store.updateSession(sessionId, { generation: crypto.randomUUID() });
+    expect(await pending).toMatchObject({ behavior: 'deny' });
+    expect(store.getInteraction(interaction.id)?.appliedAt).toBeNull();
+  });
+
+  it('SDK turu biterse bekleyen planı iptal eder ve gecikmiş callbacki allow yapmaz', async () => {
+    const message = enqueue(); await runner.tick();
+    const pending = tool('ExitPlanMode', { plan: 'Tura bağlı plan.' });
+    const interaction = store.listInteractions(sessionId)[0];
+    query.emit({ type: 'result', subtype: 'success', session_id: 'sdk-session', result: 'Tur sona erdi.', is_error: false });
+    await until(() => store.listMessages(sessionId).find(x => x.id === message.id)?.state === 'completed');
+    expect(store.getInteraction(interaction.id)?.status).toBe('cancelled');
+    expect(await pending).toMatchObject({ behavior: 'deny' });
+    expect(store.getSession(sessionId)?.state).toBe('idle');
   });
 });

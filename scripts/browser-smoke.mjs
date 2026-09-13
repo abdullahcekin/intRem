@@ -107,6 +107,27 @@ try {
   await page.keyboard.press('Enter');
   await waitFor(() => store.getInteraction(interaction.id).status === 'answered', 'soru yanıtı');
   assert.equal(store.getInteraction(interaction.id).decision.answers['Hangi ortamda devam edelim?'], 'Pilot');
+  const planText = '# Pilot planı\n\n1. Yalnız test sonucunu raporla.';
+  const plan = store.createInteraction({ sessionId: session.id, generation: session.generation, requestId: 'browser-fixture-plan', kind: 'plan', toolName: 'ExitPlanMode', input: { plan: planText }, expiresAt: new Date(Date.now() + 600000).toISOString() });
+  store.updateSession(session.id, { state: 'permission_required' });
+  await answerButton.click();
+  await page.getByRole('dialog', { name: 'Plan kararı' }).waitFor();
+  assert.equal(await page.locator('.tool-preview').textContent(), planText, 'plan metni aynen gösterilir');
+  const approvePlan = page.getByRole('button', { name: 'Bir kez onayla', exact: true });
+  assert.equal(await approvePlan.isDisabled(), true, 'plan incelendi onayı gereklidir');
+  await page.getByRole('checkbox', { name: /Gösterilen plan sürümünü inceledim/ }).check();
+  await approvePlan.click();
+  await waitFor(() => store.getInteraction(plan.id).status === 'answered', 'plan onayı');
+  assert.equal(store.getInteraction(plan.id).decision.behavior, 'allow');
+  assert.equal(store.getInteraction(plan.id).contentHash, plan.contentHash);
+  assert.equal(store.getInteraction(plan.id).appliedAt, null, 'UI kararı runner uygulaması sayılmaz');
+  const missingPlan = store.createInteraction({ sessionId: session.id, generation: session.generation, requestId: 'browser-fixture-missing-plan', kind: 'plan', toolName: 'ExitPlanMode', input: {}, expiresAt: new Date(Date.now() + 600000).toISOString() });
+  await answerButton.click();
+  await page.getByText('Bu istekte plan metni bulunmuyor.', { exact: false }).waitFor();
+  await page.getByRole('checkbox', { name: /Gösterilen plan sürümünü inceledim/ }).check();
+  assert.equal(await approvePlan.isDisabled(), true, 'eksik plan onaylanamaz');
+  await page.keyboard.press('Escape');
+  store.cancelInteraction(missingPlan.id, session.generation);
   await page.getByRole('button', { name: 'Ayarlar', exact: true }).last().click();
   await page.getByLabel('Proje bildirimleri').focus();
   await page.keyboard.press('Space');
@@ -135,7 +156,7 @@ try {
   abort.abort();
   await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui'], screenshots: output }));
+  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui'], screenshots: output }));
 } finally {
   await browser?.close();
   await app.close(); store.close();

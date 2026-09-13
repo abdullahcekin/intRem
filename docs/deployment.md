@@ -18,4 +18,14 @@ API güncellemesi runner'ı yeniden başlatmayı gerektirmez. Runner güncelleme
 
 Yedekleme: iki servisi durdurun, veri dizininin tamamını (SQLite ve varsa WAL/SHM dosyaları dahil) erişimi sınırlı yedek konumuna kopyalayın ve servisleri açın. Yedek; passkey kayıtlarını, oturumları ve push sırlarını içerir. Geri yüklemede servisler kapalı olmalıdır; eski veri dizinini geri dönüş için koruyup yedeği ayrı dizine açın, dosya sahipliği/700-600 izinlerini doğrulayın ve `INTREM_DATA_DIR` ile o dizini seçin. Eski çalışan komutların otomatik tekrarına izin vermeyin.
 
+### Yedekten açılış provası
+
+Canlı servisleri durdurmadan prova yedeği almak için SQLite Online Backup API kullanılabilir (`sqlite3.Connection.backup`). Açık veritabanının yalnız ana dosyasını kopyalamayın; WAL içindeki kayıtlar eksik kalabilir. İlk cihaz kodu gibi veritabanı dışındaki kurulum dosyalarını da erişimi sınırlı yedeğe alın. Yedek ve geri yükleme dizinleri 700, dosyalar 600 olmalıdır.
+
+Yedeği ikinci, ayrı bir prova dizinine kopyalayın. API açılmadan önce `PRAGMA integrity_check` sonucunun `ok` olduğunu ve tüm tablolardaki kayıt sayılarının yedekle eşleştiğini doğrulayın. Yedeğin kendisini koruyun; yalnız prova kopyasında cihaz push aboneliklerini ve proje bildirimlerini kapatın. Böylece eski olaylar gerçek cihazlara bildirim göndermez.
+
+Prova için yalnız API'yi `127.0.0.1` üzerinde ayrı bir portta, prova veri dizini ve boş `INTREM_ALLOWED_ROOTS` listesiyle açın. `/health` 200 ve girişsiz `/api/snapshot` 401 dönmelidir. İkinci runner başlatmayın. API'yi kapatıp normal servislerin PID değerlerinin değişmediğini doğrulayın. Bu kontrol passkey ile gerçek giriş, fiziksel telefon kabulü veya runner üzerinden konuşmayı sürdürme kanıtı değildir.
+
+2026-09-13 Ubuntu provası: SQLite bütünlüğü ve 14 tablonun kayıt sayıları eşleşti; API 200/401 kontrolleri geçti, prova API'si temiz kapandı ve normal API/runner PID değerleri değişmedi. Yedekte passkey/cihaz kaydı bulunmadığından bunların gerçek cihazla geri yükleme kabulü açık kaldı.
+
 Son passkey iptal edilirse sunucu üzerinden setup komutuyla yeni kod oluşturulabilir. Alan adı değişirse passkey RP kimliği de değişir ve yeniden kayıt gerekir.

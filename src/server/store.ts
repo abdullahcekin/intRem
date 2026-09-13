@@ -416,6 +416,16 @@ export class Store {
       return expired.length;
     });
   }
+  cancelInteraction(id: string, generation: string): boolean {
+    return this.transaction(() => {
+      const result = this.db.prepare("UPDATE interactions SET status = 'cancelled' WHERE id = ? AND generation = ? AND appliedAt IS NULL AND status IN ('pending', 'answered')").run(id, generation);
+      if (result.changes !== 1) return false;
+      const interaction = this.getInteraction(id)!;
+      this.event('interaction.cancelled', interaction.sessionId, { interaction });
+      return true;
+    });
+  }
+
   expireSessionInteractions(sessionId: string, generation: string): number {
     return this.transaction(() => {
       this.requiredSession(sessionId);

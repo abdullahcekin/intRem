@@ -35,17 +35,30 @@ export function executeReview({ cwd, executable, env, signal }: ReviewExecution)
     child.stdout.on('data', chunk => { output = (output + String(chunk)).slice(-64000); });
     child.stderr.on('data', chunk => { stderr = (stderr + String(chunk)).slice(-64000); });
     let force: ReturnType<typeof setTimeout> | undefined;
+    let cancelling = false;
+    let closed: { code: number | null; output: string } | undefined;
     const kill = (mode: NodeJS.Signals) => {
-      if (!child.pid || child.exitCode !== null) return;
-      try { if (process.platform === 'linux') process.kill(-child.pid, mode); else child.kill(mode); } catch { /* Kendi süreç grubu zaten çıkmış olabilir. */ }
+      if (!child.pid) return;
+      try { if (process.platform === 'linux') process.kill(-child.pid, mode); else if (child.exitCode === null) child.kill(mode); } catch { /* Kendi süreç grubu zaten çıkmış olabilir. */ }
     };
-    const cancel = () => { kill('SIGTERM'); force = setTimeout(() => kill('SIGKILL'), 5000); force.unref(); };
+    const clear = () => { clearTimeout(timeout); clearTimeout(force); signal.removeEventListener('abort', cancel); };
+    const finish = (result: { code: number | null; output: string }) => { clear(); resolve(result); };
+    const cancel = () => {
+      if (cancelling) return;
+      cancelling = true;
+      kill('SIGTERM');
+      // Keep shutdown alive even after the group leader and its stdio have closed.
+      force = setTimeout(() => { kill('SIGKILL'); finish(closed ?? { code: child.exitCode, output: output || stderr }); }, 5000);
+    };
     signal.addEventListener('abort', cancel, { once: true });
     if (signal.aborted) cancel();
     const timeout = setTimeout(cancel, 15 * 60_000); timeout.unref();
-    const clear = () => { clearTimeout(timeout); clearTimeout(force); signal.removeEventListener('abort', cancel); };
     child.once('error', error => { clear(); reject(error); });
-    child.once('close', code => { clear(); resolve({ code, output: output || stderr }); });
+    child.once('close', code => {
+      const result = { code, output: output || stderr };
+      if (cancelling) closed = result;
+      else finish(result);
+    });
   });
 }
 export class ReviewWorker {

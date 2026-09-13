@@ -72,6 +72,7 @@ export class Runner {
   private readonly lock: RunnerLock;
   private readonly reviewer: ReviewWorker | undefined;
   private readonly callbacks = new Set<Promise<PermissionResult | null>>();
+  private readonly consumers = new Set<Promise<void>>();
 
   constructor(private readonly store: Store, private readonly options: RunnerOptions) {
     this.lock = new RunnerLock(store.db);
@@ -164,6 +165,18 @@ export class Runner {
       persistSession: true,
       abortController: abort,
       canUseTool: this.permissionHandler(session, abort.signal),
+      hooks: {
+        PreToolUse: [{ matcher: 'ExitPlanMode', hooks: [async input => {
+          if (input.hook_event_name !== 'PreToolUse' || input.tool_name !== 'ExitPlanMode') return {};
+          const plan = input.tool_input as Record<string, unknown> | null;
+          if (!plan || typeof plan.plan !== 'string' || !plan.plan.trim()) {
+            return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'deny', permissionDecisionReason: 'Somut plan içeriği olmadan uygulama onayı verilemez.' } };
+          }
+          // The CLI enriches hook input, while the model's permission input may be empty.
+          // Ask preserves the existing human decision gate; it never grants approval here.
+          return { hookSpecificOutput: { hookEventName: 'PreToolUse', permissionDecision: 'ask', updatedInput: JSON.parse(JSON.stringify(plan)) as Record<string, unknown> } };
+        }] }],
+      },
       ...(this.options.claudeExecutable ? { pathToClaudeCodeExecutable: this.options.claudeExecutable } : {}),
       ...(session.claudeSessionId ? { resume: session.claudeSessionId } : {}),
       ...(session.requestedModel ? { model: session.requestedModel } : {}),
@@ -172,6 +185,8 @@ export class Runner {
     const runtime: ActiveSession = { id: session.id, generation: session.generation, query, input, abort, currentMessage: null, answerReceived: false, closed: false, finished: Promise.resolve(), seenMessages: new Set() };
     this.active.set(session.id, runtime);
     runtime.finished = this.consume(runtime);
+    this.consumers.add(runtime.finished);
+    void runtime.finished.finally(() => { this.consumers.delete(runtime.finished); }).catch(() => undefined);
     return runtime;
   }
 
@@ -188,6 +203,7 @@ export class Runner {
           const text = event.message.content.filter(block => block.type === 'text').map(block => block.text).join('\n');
           if (text) { this.store.appendMessage(runtime.id, 'assistant', text); runtime.answerReceived = true; }
         } else if (event.type === 'result' && runtime.currentMessage) {
+          this.store.expireSessionInteractions(runtime.id, runtime.generation);
           if (!runtime.answerReceived && event.subtype === 'success' && event.result) this.store.appendMessage(runtime.id, 'assistant', event.result);
           this.store.updateMessage(runtime.currentMessage.id, { state: event.is_error ? 'failed' : 'completed', error: event.is_error ? 'Claude işlemi hata ile tamamladı.' : null });
           this.store.updateSession(runtime.id, { state: 'idle', claudeSessionId: event.session_id, lastActivityAt: new Date().toISOString() });
@@ -197,7 +213,7 @@ export class Runner {
       }
     } catch {
       // SDK errors can contain command output or credentials; keep a stable safe diagnostic.
-      this.store.event('runner.disconnected', runtime.id, { code: 'SDK_CONNECTION_LOST', generation: runtime.generation });
+      if (!runtime.closed) this.store.event('runner.disconnected', runtime.id, { code: 'SDK_CONNECTION_LOST', generation: runtime.generation });
     } finally {
       if (!runtime.closed) {
         runtime.closed = true;
@@ -212,6 +228,7 @@ export class Runner {
   private permissionHandler(session: Session, runtimeSignal: AbortSignal): CanUseTool {
     const handle: CanUseTool = async (toolName, input, callback) => {
       if (runtimeSignal.aborted || callback.signal.aborted || this.store.getSession(session.id)?.generation !== session.generation || !this.store.getSetting('remoteControlEnabled', true)) return denied('Oturum artık etkin değil veya uzaktan kontrol kapalı.');
+      // Approval requires explicit callback content; missing content stays denied, and an approved snapshot is never reread from a mutable file.
       if (toolName === 'ExitPlanMode' && (typeof input.plan !== 'string' || !input.plan.trim())) return denied('Somut plan içeriği olmadan uygulama onayı verilemez.');
       const original = JSON.stringify(input);
       const snapshot = JSON.parse(original) as Record<string, unknown>;
@@ -239,8 +256,9 @@ export class Runner {
         }
         return denied('İşlem durduruldu.');
       } finally {
+        this.store.cancelInteraction(interaction.id, session.generation);
         const current = this.store.getSession(session.id);
-        if (current?.generation === session.generation && current.controlEnabled && current.state !== 'delivery_unknown') {
+        if (current?.generation === session.generation && current.controlEnabled && (current.state === 'waiting_answer' || current.state === 'permission_required')) {
           const remaining = this.store.listInteractions(session.id).filter(value => value.generation === session.generation && value.status === 'pending');
           this.store.updateSession(session.id, { state: remaining.some(value => value.kind === 'question') ? 'waiting_answer' : remaining.length ? 'permission_required' : 'working' });
         }
@@ -292,6 +310,7 @@ export class Runner {
     await this.reviewer?.stop();
     await Promise.all([...this.active.values()].map(runtime => this.closeActive(runtime, false)));
     await Promise.allSettled([...this.callbacks]);
+    await Promise.allSettled([...this.consumers]);
     this.store.setSetting('runnerHeartbeat', '');
     this.lock.release();
   }

@@ -2,7 +2,16 @@
 
 Son güncelleme: **2026-09-13**. Bu bir durum kaydıdır; yeni oturumda Git, CI ve sunucu durumunu tekrar doğrulayın.
 
-## Son doğrulanmış teslim
+## Son doğrulanmış çalışma
+
+- Çalışma dalı: `fix/resume-lifecycle-validation`; temel HEAD/origin/main: **`fa1f5428417a265178641c683439499055ed282b`**. Bu oturumdaki kaynak değişiklikleri henüz commit edilmedi, push veya normal servislere dağıtım yapılmadı.
+- Temel commit için [GitHub Actions başarılı](https://github.com/abdullahcekin/intRem/actions/runs/34763928605). Bu CI sonucu yeni çalışma ağacının kanıtı değildir.
+- **2026-09-13, son kaynakla ayrı Ubuntu doğrulaması:** tip kontrolü, **59/59 test**, üretim derlemesi ve **13 Chromium akışı** başarılı. İki gerçek Linux alt süreç testi bu sayıya dahildir.
+- Sonraki bağımsız kaynak incelemesi plan/kapanış değişikliklerini uygun buldu; yeni somut hata yok. Plan kartında metnin aynen gösterilmesi, açık kullanıcı teyidi ve eksik planın reddi eklendi; yerel Chromium kontrolü **15 akışla** geçti.
+- Gerçek Sonnet/SDK plan pilotunda `PreToolUse` planı `ask + updatedInput` ile mevcut karar callback'ine taşındı. Ayrı veri deposundaki gerçek Runner + Store pilotu: `completed`, bir plan, bir uygulanmış karar; onay sonrası plan metni ve beklenen yanıt eşleşti. Normal systemd runner ve fiziksel telefon üzerinden yeni plan kabulü henüz yapılmadı.
+- Yedekten ayrı API açılışında SQLite bütünlüğü ve 14 tablonun kayıt sayıları eşleşti; sağlık 200, girişsiz snapshot 401, prova API kapanışı başarılı. Normal API/runner PID'leri değişmedi, ikinci runner başlatılmadı. Yedekte cihaz/passkey kaydı yoktu; gerçek cihazla geri yükleme kabulü bu kanıta dahil değildir.
+
+## Normal servislere son dağıtım
 
 - Repo: [abdullahcekin/intRem](https://github.com/abdullahcekin/intRem)
 - Uygulama commit'i: **`623d575db0612da4cb085ddfbb6f97f65fbfd13d`**.
@@ -25,18 +34,18 @@ Tarayıcı testi sanal WebAuthn cihazı kullanır. Gerçek telefon/passkey/push 
 
 ## Açık işler ve sıradaki adımlar
 
-1. **[#3: Gerçek plan onayı](https://github.com/abdullahcekin/intRem/issues/3).** `ExitPlanMode` somut plan içeriğiyle onaya bağlanmalı; eksik/değişmiş plan reddedilmeli. Mevcut kod içerik yoksa kapalı kalır. Önce ayrı pilotta SDK callback'inin gerçekten verdiği alanları doğrulayın; plan dosyasını tahmin ederek seçmeyin.
-2. **[#8: Kapanış/kuyruk düzeltmeleri](https://github.com/abdullahcekin/intRem/issues/8)** ve **[#6: Yedekten başlatma](https://github.com/abdullahcekin/intRem/issues/6).** Bağımsız kaynak incelemesi tamamlandı; tüketicisiz izin kaydı, SDK tüketicisini beklemeyen kapanış ve Codex alt süreç grubunun iptali için üç düzeltme açık. Yedek talimatı var; ayrı dizindeki yedekten API açma provası açık.
+1. **[#3: Plan onayının dağıtım kabulü](https://github.com/abdullahcekin/intRem/issues/3).** Hook üzerinden somut plan aktarımı ve Runner + Store canlı pilotu doğrulandı. Eksik/değişmiş plan, eski nesil, iptal ve tek kullanımlık karar testleri geçti. Bağımsız kaynak incelemesi tamamlandı; yayın CI'sı ve normal systemd runner üzerinden kabulü açık. Plan dosyası tahmin edilmez; CLI'nin hook'a eklediği snapshot kullanılır.
+2. **[#8: Kapanış/kuyruk düzeltmelerinin yayını](https://github.com/abdullahcekin/intRem/issues/8).** Tüketicisiz karar iptali, SDK tüketicisini bekleyen kapanış ve Codex süreç grubu iptali düzeltildi; regresyonlar RED/GREEN ile doğrulandı. Bağımsız review'da bulunan `unref` kaynaklı erken süreç çıkışı da standalone Linux testiyle düzeltildi. Son değişiklikler henüz GitHub CI veya normal servis dağıtımı görmedi. **[#6: Yedekten API açılışı](https://github.com/abdullahcekin/intRem/issues/6)** ayrı dizinde geçti; gerçek cihazla geri yükleme ve uzun pilot açık.
 3. **[#5: OmniRoute yönlendirmesi](https://github.com/abdullahcekin/intRem/issues/5).** Sağlık görünümü var; üç hesap zinciri, ayrı model havuzları, güvenilir hesap telemetrisi ve bütçeli fallback henüz tamamlanmadı. 2026-09-13 yeniden sayımında hesap/combo/eşleme sayıları sıfır. Kurulu 3.8.50 bütçe kontrolü atomik harcama rezervasyonu yapmıyor ve sıfır limit sınırsız anlamına geliyor; sert bütçe garantisi olarak kullanmayın, ücretli fallback kapalı kalmalı.
 4. **[#6: Alan adı ve telefon kabulü](https://github.com/abdullahcekin/intRem/issues/6).** DNS kaydı, HTTPS proxy aktivasyonu, fiziksel telefonda ilk passkey/PWA/push ve uzun pilot açık.
 
 Kullanıcıdan gereken kurulum bilgileri: alan adı DNS kaydı, OmniRoute içinde hesapların bağlanması ve günlük azami fallback bütçesi. Kimlik bilgilerini sohbet veya issue üzerinden istemeyin. Bütçe henüz verilmedi; ücretli fallback kapalı.
 
-## Bu güncelleme sırasında devam eden çalışma
+## Son inceleme ve sonraki somut adım
 
-Paralel çalışma: plan onayı ve runner/Store kapanış regresyonları bir ajanda, Codex alt süreç grubu düzeltmesi diğer ajanda. Bağımsız kaynak incelemesi tamamlandı; üç bulgu #8'de. OmniRoute sözleşme analizi hesapların kurulmadığını ve mevcut bütçe kontrolünün sert sınır sağlamadığını doğruladı. Ana ajan yedekten başlatma provasını hazırlıyor. **Düzeltmeler ve canlı kabul henüz tamamlandı sayılmıyor.** Kesinti olursa `git status` ile ajanların bıraktığı dosyaları kontrol edin; doğrudan yeniden üretmeyin veya silmeyin.
+Bağımsız inceleme kapanış değişikliklerinde ek bir bulgu buldu: `force.unref()` nedeniyle ana süreç ve stdio kapandığında runner SIGKILL aşamasını beklemeyebiliyordu. Zamanlayıcı ref bırakıldı; ayrı Linux süreç testinde önce beklenen başarısızlık, sonra başarı görüldü. Son hook aktarımı ve bu düzeltmenin yeniden bağımsız incelemesi tamamlandı; spec ve kod kalitesi uygun bulundu. Bu sonuç yayın CI'sı veya fiziksel telefon kabulünün yerine geçmez.
 
-Önceki ajanlar kota hatasıyla durmuştu; sonraki kontrolde kullanım tekrar mümkündü ve yeni ajanlar başlatıldı. Yeni oturumda eski hata durumunu güncel kota bilgisi sanmayın.
+Sıradaki somut iş: commit/yayın CI kanıtını kaydedin ve etkin iş olmadığını doğrulayarak normal runner'a aktarın. Fiziksel telefon kabulü ile OmniRoute hesap/bütçe kurulumu ayrı kalır. Yerel `tasks/` altındaki test raporları ve pilot betikleri Git'e eklenmez; önceki tamamlanmış pilotları otomatik tekrarlamayın.
 
 ## Yeni oturumda devam etme
 
