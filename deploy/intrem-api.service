@@ -1,0 +1,18 @@
+[Unit]
+Description=intRem API and PWA
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/apps/intrem
+EnvironmentFile=%h/.config/intrem/env
+ExecStart=/usr/bin/node %h/apps/intrem/dist/server/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=20
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

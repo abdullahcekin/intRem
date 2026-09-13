@@ -1,0 +1,19 @@
+[Unit]
+Description=intRem Claude session runner
+After=network-online.target
+Wants=network-online.target
+
+[Service]
+Type=simple
+WorkingDirectory=%h/apps/intrem
+EnvironmentFile=%h/.config/intrem/env
+ExecStart=/usr/bin/node %h/apps/intrem/dist/runtime/main.js
+Restart=on-failure
+RestartSec=5
+TimeoutStopSec=25
+KillMode=control-group
+UMask=0077
+NoNewPrivileges=true
+
+[Install]
+WantedBy=default.target

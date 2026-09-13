@@ -1,0 +1,104 @@
+import assert from 'node:assert/strict';
+import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { tmpdir } from 'node:os';
+import path from 'node:path';
+import { chromium } from '@playwright/test';
+import { createApp } from '../dist/server/app.js';
+import { Store } from '../dist/server/store.js';
+import { Auth } from '../dist/server/auth.js';
+
+// Geçici veriler; canlı model çağrısı veya üretim girişini atlayan yol yoktur.
+const dir = mkdtempSync(path.join(tmpdir(), 'intrem-browser-'));
+const output = path.resolve('output/playwright');
+mkdirSync(output, { recursive: true });
+const origin = 'http://localhost:4111';
+const config = { dataDir: dir, dbPath: path.join(dir, 'db.sqlite'), host: '127.0.0.1', port: 4111, origin, rpId: 'localhost', secureCookies: false, allowedRoots: [dir], claudeHome: path.join(dir, '.claude'), claudeExecutable: 'missing-claude', codexExecutable: 'missing-codex', omnirouteUrl: null, pushSubject: origin };
+const store = new Store(config.dbPath), auth = new Auth(store.db);
+const bootstrap = auth.resetBootstrap();
+const app = await createApp({ config, store, auth });
+let browser;
+const errors = [];
+const waitFor = async (condition, label) => {
+  const until = Date.now() + 12000;
+  while (Date.now() < until) { if (await condition()) return; await new Promise(resolve => setTimeout(resolve, 100)); }
+  throw new Error(`Doğrulanamadı: ${label}`);
+};
+try {
+  await app.listen({ host: config.host, port: config.port });
+  browser = await chromium.launch({ headless: true });
+  const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
+  const page = await context.newPage();
+  page.on('pageerror', e => errors.push(e.message));
+  const cdp = await context.newCDPSession(page);
+  await cdp.send('WebAuthn.enable');
+  await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
+  await page.goto(origin);
+  await page.getByRole('heading', { name: 'İlk cihazınızı bağlayın' }).waitFor();
+  await page.screenshot({ path: path.join(output, 'login-desktop.png') });
+  await page.getByLabel('Kurulum anahtarı').fill(bootstrap);
+  await page.getByRole('button', { name: 'Passkey oluştur ve bağlan' }).click();
+  await page.getByRole('navigation', { name: 'Ana gezinme' }).waitFor();
+  assert.equal(auth.hasCredentials(), true);
+  await page.getByRole('button', { name: 'Proje ekle', exact: true }).first().click();
+  await page.getByLabel('Proje adı', { exact: true }).fill('Pilot uygulama');
+  await page.getByLabel('Sunucudaki çalışma dizini').fill(dir);
+  await page.getByRole('button', { name: 'Projeyi ekle', exact: true }).click();
+  await waitFor(() => store.listProjects().length === 1, 'proje');
+  await page.getByRole('button', { name: 'Yeni oturum başlat', exact: true }).first().click();
+  await page.getByLabel('Oturum adı', { exact: false }).fill('Mobil kontrol pilotu');
+  await page.getByRole('button', { name: 'Oturumu oluştur' }).click();
+  await waitFor(() => store.listSessions().length === 1, 'oturum');
+  const session = store.listSessions()[0];
+  store.appendMessage(session.id, 'assistant', 'Proje hazır. Sonraki adım için tercihinizi bekliyorum.');
+  const interaction = store.createInteraction({ sessionId: session.id, generation: session.generation, requestId: 'browser-fixture-question', kind: 'question', toolName: 'AskUserQuestion', input: { questions: [{ question: 'Hangi ortamda devam edelim?', options: [{ label: 'Pilot', description: 'Yalıtılmış deneme ortamı' }, { label: 'Geliştirme', description: 'Yerel geliştirme ortamı' }] }] }, expiresAt: new Date(Date.now() + 600000).toISOString() });
+  store.updateSession(session.id, { state: 'waiting_answer' });
+  await page.getByText('Proje hazır.', { exact: false }).waitFor();
+  await page.screenshot({ path: path.join(output, 'sessions-desktop.png') });
+  for (const width of [320, 375, 768, 1024, 1440]) {
+    await page.setViewportSize({ width, height: 900 });
+    await page.waitForTimeout(200);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `yatay taşma ${width}`);
+  }
+  await page.setViewportSize({ width: 390, height: 844 });
+  await page.screenshot({ path: path.join(output, 'conversation-mobile.png') });
+  const answerButton = page.getByRole('button', { name: /Yanıtla|Kararı aç|İncele/ }).first();
+  await answerButton.click();
+  await page.getByRole('dialog', { name: 'Claude cevabınızı bekliyor' }).waitFor();
+  await page.getByRole('radio', { name: /Pilot/ }).check();
+  await page.screenshot({ path: path.join(output, 'question-mobile.png') });
+  await page.getByRole('button', { name: 'Yanıtı gönder', exact: true }).click();
+  await waitFor(() => store.getInteraction(interaction.id).status === 'answered', 'soru yanıtı');
+  assert.equal(store.getInteraction(interaction.id).decision.answers['Hangi ortamda devam edelim?'], 'Pilot');
+  await page.getByRole('button', { name: 'Ayarlar', exact: true }).last().click();
+  await page.getByLabel('Proje bildirimleri').click();
+  await waitFor(() => store.listProjects()[0].pushEnabled, 'proje bildirimi');
+  await page.getByRole('heading', { name: 'Proje profilleri' }).scrollIntoViewIfNeeded();
+  await page.screenshot({ path: path.join(output, 'settings-mobile.png') });
+  await context.setOffline(true);
+  await waitFor(async () => (await page.getByText('Çevrimdışı', { exact: false }).count()) > 0, 'çevrimdışı');
+  assert.equal(await page.getByLabel('Proje bildirimleri').isDisabled(), true);
+  await context.setOffline(false);
+  const cookies = await context.cookies();
+  const identity = auth.authenticate(cookies.find(c => c.name === 'intrem_session').value);
+  assert.ok(identity);
+  const cursor = store.cursor();
+  const abort = new AbortController();
+  const stream = await fetch(`${origin}/api/events/stream?after=0`, { headers: { cookie: `intrem_session=${cookies.find(c => c.name === 'intrem_session').value}`, 'Last-Event-ID': String(cursor) }, signal: abort.signal });
+  const reader = stream.body.getReader();
+  let received = new TextDecoder().decode((await reader.read()).value);
+  store.event('test.replay', null, { checked: true });
+  received += new TextDecoder().decode((await reader.read()).value);
+  assert.ok(received.includes('test.replay'));
+  assert.equal(received.includes('project.created'), false);
+  auth.revokeDevice(identity.device.id);
+  let ended = false;
+  await waitFor(async () => { const item = await reader.read(); ended = item.done; return ended; }, 'SSE iptali');
+  abort.abort();
+  await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
+  assert.deepEqual(errors, []);
+  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE'], screenshots: output }));
+} finally {
+  await browser?.close();
+  await app.close(); store.close();
+  rmSync(dir, { recursive: true, force: true });
+}

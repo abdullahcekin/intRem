@@ -1,0 +1,59 @@
+# intRem uygulama sözleşmesi
+
+Kullanıcının devam talebiyle alan adı + passkey girişi ve konuşmayı koruyan kontrollü devir esas alınır. Aktif kaynak süreç kendiliğinden kapatılmaz; ilk sürümde canlı süreç izlenir, kaynak süreç çıktıktan sonra aynı konuşma kimliği intRem tarafından sürdürülür. Gateway hesapları hazırlanmadığında Claude mevcut kendi yapılandırmasını kullanır; gerçek hesap/model bilinmiyor gösterilir. DeepSeek için bütçe ve hesap kurulumu tamamlanana kadar ücretli fallback kapalıdır.
+
+## Dosya sorumlulukları
+
+- `src/shared/types.ts`: istemci/sunucu ortak veri sözleşmesi.
+- `src/server/store.ts`: node:sqlite ile kalıcılık, atomik karar ve kuyruk işlemleri; `tests/store.test.ts`.
+- `src/server/auth.ts`: passkey, kısa ömürlü challenge, cookie ve cihaz iptali; `tests/auth.test.ts`.
+- `src/server/app.ts`: Fastify API, Origin/CSRF kontrolü, SSE ve statik PWA; `tests/api.test.ts`.
+- `src/runtime/discovery.ts`: izinli dizinlerde mevcut Claude süreç kaydı keşfi; `tests/discovery.test.ts`.
+- `src/runtime/runner.ts` ve `main.ts`: HTTP servisinden ayrı, Claude Agent SDK oturum süreçleri, kuyruk ve callback'ler; `tests/runner.test.ts`.
+- `src/web/`: React arayüzü; `public/`: manifest, güvenli uygulama kabuğu ve ikonlar.
+- `deploy/`: Ubuntu systemd birimleri ve Caddy örneği; `README.md`: kurulum ve gerçek entegrasyon sınırları.
+
+## API
+
+Tüm `/api` uçları, `/api/auth/*` dışında giriş gerektirir. Yazma istekleri JSON ve same-origin gerektirir; `X-CSRF-Token` login snapshot'ından alınır. Yanıt hatası `{error: string, code: string}` biçimindedir.
+
+- `GET /api/auth/status` → `{authenticated, setupRequired, csrfToken?, device?}`.
+- `POST /api/auth/register/options` `{bootstrapToken?, name}` → WebAuthn creation options.
+- `POST /api/auth/register/verify` `{response, name}` → giriş oturumu ve CSRF token.
+- `POST /api/auth/login/options` `{}` → WebAuthn request options.
+- `POST /api/auth/login/verify` `{response, name?}` → giriş oturumu ve CSRF token.
+- `POST /api/auth/logout` `{}`.
+- `GET /api/snapshot` → `AppSnapshot`.
+- `POST /api/projects` `{name,cwd,mode?}` → `Project`; cwd sunucudaki izinli köklerden biri altında olmalı.
+- `POST /api/sessions` `{projectId,title?}` → `Session`.
+- `GET /api/discovery` → `{sessions: DiscoveredSession[]}`.
+- `POST /api/sessions/import` `{claudeSessionId,pid,projectId}` → `Session`; keşif ve proje cwd eşleşmesi yeniden doğrulanır.
+- `POST /api/sessions/:id/takeover` `{generation}` → `Session`; kaynak süreç canlıysa 409.
+- `GET /api/sessions/:id/messages` → `{messages: Message[]}`.
+- `POST /api/sessions/:id/messages` `{clientId,text,generation}` → `Message`; aynı anahtar/farklı içerik 409.
+- `POST /api/messages/:id/cancel` `{}` → `Message`; sadece queued.
+- `POST /api/interactions/:id/decision` `{generation,contentHash,behavior,answers?,reason?}` → `Interaction`.
+- `POST /api/sessions/:id/stop` `{generation,confirm:true}` → stop isteği; çalışan işi durdurma ayrı insan eylemi.
+- `POST /api/control` `{enabled:boolean}` → uzaktan yeni komut kabulü.
+- `GET /api/events/stream?after=integer` → SSE `update` olayları; kesintide snapshot yeniden alınır.
+- `GET /api/health` → `HealthReport`; `GET /health` yalnız temel liveness.
+- `GET /api/devices` → `{devices: Device[]}`.
+- `POST /api/devices/:id/revoke` `{}`.
+- `GET /api/push/key` → `{publicKey}`.
+- `POST /api/devices/push` `{subscription}`; `POST /api/push/test` `{}`.
+
+## Store arayüzü
+
+`Store(path)` nesnesi `db: DatabaseSync` sağlar. Diğer modüller için aşağıdaki yöntemler sabittir; eşzamanlı karar ve kuyruk güncellemeleri transaction içinde olur.
+
+`listProjects()`, `getProject(id)`, `createProject({name,cwd,host,mode?})`, `listSessions()`, `getSession(id)`, `createSession({projectId,title?,source?,claudeSessionId?,sourcePid?,sourceStart?,tmuxPane?})`, `updateSession(id,patch)`, `listMessages(sessionId)`, `enqueueMessage(sessionId,{clientId,text,generation})`, `cancelMessage(id)`, `claimNextMessage(sessionId)`, `updateMessage(id,patch)`, `appendMessage(sessionId,role,text)`, `createInteraction({sessionId,generation,requestId,kind,toolName,input,expiresAt})`, `getInteraction(id)`, `listInteractions(sessionId?)`, `decideInteraction(id,{generation,contentHash,decision,deviceId})`, `expireInteractions()`, `event(type,sessionId,data)`, `eventsAfter(cursor,limit?)`, `cursor()`, `getSetting(key,fallback?)`, `setSetting(key,value)`, `recoverDeliveries()`, `close()`.
+
+Store, kendi şemasını kurar; auth modülü kendi tablolarını aynı bağlantıda kurar. `updateSession` ve `updateMessage` yalnız ortak tip alanlarını kabul eder. `get*` bulunamadığında `undefined`; alan/koşul hatalarında `.statusCode`/`.code` taşıyan `AppError` kullanılır (`src/server/errors.ts`, root oluşturur).
+
+## Doğrulama sırası
+
+1. Atomik karar, generation, idempotency ve restart testleri yazılıp beklenen başarısızlık görülür; sonra store uygulanır.
+2. Auth/API testleri girişsiz erişimi, Origin, tekrar challenge, cihaz iptali ve yanlış hedefi reddeder.
+3. Runner/discovery testleri sahte süreç adaptörü ve geçici dosyalarla gerçek karar/teslim durumlarını sınar; simülasyon canlı Claude doğrulamasından ayrı raporlanır.
+4. UI build ve Playwright kullanıcı akışları; geniş/dar ekranda görüntü incelemesi.
+5. Ayrı Ubuntu pilotunda gerçek CLI gidiş/dönüşü, API restart ve kontrollü devir; mevcut çalışma oturumlarına müdahale yok.

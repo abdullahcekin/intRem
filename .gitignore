@@ -1,0 +1,13 @@
+node_modules/
+dist/
+.env
+.intrem/
+data/
+test-results/
+playwright-report/
+output/
+*.log
+# Yerel kaynak belge ve sunucu envanteri public repoya dahil edilmez.
+docs/*.docx
+docs/intrem-tasarim-taslagi.md
+tasks/
