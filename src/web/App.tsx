@@ -35,7 +35,14 @@ export function Modal({ title, onClose, children, busy = false }: { title: strin
     dialog.current?.showModal();
     return () => { dialog.current?.close(); target?.focus(); };
   }, []);
-  return <dialog ref={dialog} className="modal" aria-label={title} onCancel={event => { event.preventDefault(); if (!busy) closeRef.current(); }}>
+  return <dialog ref={dialog} className="modal" aria-label={title} onCancel={event => { event.preventDefault(); if (!busy) closeRef.current(); }} onKeyDown={event => {
+    if (event.key !== 'Tab') return;
+    const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(node => node.getClientRects().length > 0);
+    const first = controls[0], last = controls.at(-1);
+    if (!first || !last) { event.preventDefault(); return; }
+    if (event.shiftKey && document.activeElement === first) { event.preventDefault(); last.focus(); }
+    else if (!event.shiftKey && document.activeElement === last) { event.preventDefault(); first.focus(); }
+  }}>
     <div className="modal-heading"><h2>{title}</h2><Button className="icon-button subtle" onClick={onClose} disabled={busy} aria-label="Pencereyi kapat"><X size={22} /></Button></div>
     {children}
   </dialog>;

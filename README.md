@@ -36,10 +36,10 @@ API ve oturum çalıştırıcısı ayrı süreçlerdir. Veri SQLite'ta saklanır
 | Passkey, Origin/CSRF, cihaz iptali | Uygulanmış; WebAuthn tarayıcı doğrulaması var |
 | Kuyruk, ilk kararın kazanması, SSE devam kimliği | Uygulanmış; süreç yarışı ve kesinti testleri var |
 | Mobil konuşma, soru/izin kartları, çevrimdışı taslak | Uygulanmış; 320–1440 px tarayıcı kontrolü var |
-| Claude çalıştırıcı ve kontrollü devir | Gerçek VDS mesajı, geçmiş okuma ve aynı konuşmayı restart sonrası sürdürme geçti; aktif kaynak süreçler kapatılmadı |
+| Claude çalıştırıcı ve kontrollü devir | Gerçek VDS mesajı, geçmiş okuma, aynı konuşmayı restart sonrası sürdürme ve servis üzerinden soru yanıtı geçti; aktif kaynak süreçler kapatılmadı |
 | Web Push ve proje/cihaz tercihleri | Uygulanmış; gerçek telefon teslimi bekliyor |
 | OmniRoute | Sağlık görünümü var; hesap havuzu ve bütçeli fallback açık iş |
-| Codex | Kalıcı inceleme kuyruğu, salt okunur çalıştırma, iptal ve değişen kod kontrolü uygulandı; gerçek CLI pilotu bekliyor |
+| Codex | Kalıcı inceleme kuyruğu, salt okunur çalıştırma, iptal ve değişen kod kontrolü uygulandı; gerçek VDS CLI pilotu geçti |
 
 Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin mesajını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Kaynak zaman damgaları SDK tarafından verilmediğinden aktarılan mesajların zamanı aktarım anıdır. Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Plan içeriği elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
 
@@ -70,3 +70,7 @@ npm audit
 ```
 
 Tarayıcı kontrolü geçici SQLite verisi ve sanal WebAuthn cihazı kullanır; LLM çağrısı yapmaz. Ekran görüntüleri `output/playwright/` altında oluşur. Canlı model kontrolü, yalnız ayrı bir pilot dizini açıkça verildiğinde `INTREM_PILOT_PROJECT=/path/to/pilot node scripts/live-pilot.mjs` ile yapılır.
+
+[GitHub Actions](https://github.com/abdullahcekin/intRem/actions/workflows/check.yml), her push ve pull request için Node.js 22 üzerinde bağımlılık kurulumu, tip kontrolü, birim/entegrasyon testleri, üretim derlemesi ve Chromium tarayıcı akışlarını çalıştırır. Gerçek Claude/Codex çağrıları ve fiziksel telefon kabulü CI'dan ayrı yürütülür.
+
+`scripts/live-review.mjs`, açıkça seçilen pilot Git projesinde gerçek Codex incelemesini doğrular. `scripts/service-pilot.mjs`, kurulu runner üzerinden gerçek `AskUserQuestion` callback'ini sınar; kayıtlar pilot oturumunda kalır. Her ikisi için `INTREM_PILOT_PROJECT` gerekir. Soru testinde yalnız beklenen pilot sorusuna yanıt verilir; diğer araç istekleri reddedilir. `INTREM_PILOT_MODEL`, yalnız bu testin oluşturduğu oturumun modelini seçer.

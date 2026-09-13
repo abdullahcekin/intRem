@@ -85,16 +85,31 @@ try {
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: path.join(output, 'conversation-mobile.png') });
-  const answerButton = page.getByRole('button', { name: /Yanıtla|Kararı aç|İncele/ }).first();
-  await answerButton.click();
+  const sendBox = await page.getByRole('button', { name: 'Mesajı bu oturuma gönder' }).boundingBox();
+  const navBox = await page.getByRole('navigation', { name: 'Mobil ana gezinme' }).boundingBox();
+  assert.ok(sendBox && navBox && sendBox.y + sendBox.height <= navBox.y, 'gönder düğmesi mobil gezinmenin üstünde');
+  const answerButton = page.getByRole('button', { name: 'İncele', exact: true });
+  await answerButton.focus();
+  await page.keyboard.press('Enter');
   await page.getByRole('dialog', { name: 'Claude cevabınızı bekliyor' }).waitFor();
-  await page.getByRole('radio', { name: /Pilot/ }).check();
+  for (let i = 0; i < 8; i++) {
+    await page.keyboard.press('Tab');
+    assert.equal(await page.evaluate(() => !!document.activeElement?.closest('dialog')), true, 'odak karar penceresinde kalır');
+  }
+  await page.keyboard.press('Escape');
+  await page.getByRole('dialog', { name: 'Claude cevabınızı bekliyor' }).waitFor({ state: 'hidden' });
+  assert.equal(await answerButton.evaluate(node => node === document.activeElement), true, 'odak karar düğmesine geri döner');
+  await page.keyboard.press('Enter');
+  await page.getByRole('radio', { name: /Pilot/ }).focus();
+  await page.keyboard.press('Space');
   await page.screenshot({ path: path.join(output, 'question-mobile.png') });
-  await page.getByRole('button', { name: 'Yanıtı gönder', exact: true }).click();
+  await page.getByRole('button', { name: 'Yanıtı gönder', exact: true }).focus();
+  await page.keyboard.press('Enter');
   await waitFor(() => store.getInteraction(interaction.id).status === 'answered', 'soru yanıtı');
   assert.equal(store.getInteraction(interaction.id).decision.answers['Hangi ortamda devam edelim?'], 'Pilot');
   await page.getByRole('button', { name: 'Ayarlar', exact: true }).last().click();
-  await page.getByLabel('Proje bildirimleri').click();
+  await page.getByLabel('Proje bildirimleri').focus();
+  await page.keyboard.press('Space');
   await waitFor(() => store.listProjects()[0].pushEnabled, 'proje bildirimi');
   await page.getByRole('heading', { name: 'Proje profilleri' }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(output, 'settings-mobile.png') });
@@ -120,7 +135,7 @@ try {
   abort.abort();
   await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui'], screenshots: output }));
+  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui'], screenshots: output }));
 } finally {
   await browser?.close();
   await app.close(); store.close();
