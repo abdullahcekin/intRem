@@ -4,6 +4,7 @@ import type { Interaction, Message, Project, Session } from '../shared/types';
 import { api, ApiError, errorText } from './api';
 import { displayTime, messageLabels, readDraft, saveDraft } from './helpers';
 import { Button, Modal, Notice, StatusBadge } from './App';
+import { ReviewPanel } from './ReviewPanel';
 
 export function Conversation({ session, project, interactions, cursor, canAct, onRefresh, onInteraction, onBack }: {
   session: Session; project: Project; interactions: Interaction[]; cursor: number; canAct: boolean;
@@ -16,7 +17,9 @@ export function Conversation({ session, project, interactions, cursor, canAct, o
   const [error, setError] = useState('');
   const [loaded, setLoaded] = useState(false);
   const deliveryKey = `intrem:delivery:${session.id}:${session.generation}`;
-  const savedDelivery = () => { try { return localStorage.getItem(deliveryKey); } catch { return null; } };
+  const savedDelivery = (): { clientId: string; text: string } | null => {
+    try { const value = JSON.parse(localStorage.getItem(deliveryKey) ?? 'null'); return value && typeof value.clientId === 'string' && typeof value.text === 'string' ? value : null; } catch { return null; }
+  };
   const [localUnknown, setLocalUnknown] = useState(() => Boolean(savedDelivery()));
   const [confirm, setConfirm] = useState<'stop' | 'takeover' | null>(null);
   const [newEvents, setNewEvents] = useState(false);
@@ -37,7 +40,7 @@ export function Conversation({ session, project, interactions, cursor, canAct, o
       if (sequence !== loadSequence.current) return;
       setMessages(data.messages); setLoaded(true);
       const pendingClient = savedDelivery();
-      const accepted = pendingClient && data.messages.find(message => message.clientId === pendingClient);
+      const accepted = pendingClient && data.messages.find(message => message.clientId === pendingClient.clientId);
       if (accepted) {
         localStorage.removeItem(deliveryKey); setLocalUnknown(false);
         setDraft(previous => { if (previous.trim() === accepted.text) { saveDraft(session.id, ''); return ''; } return previous; });
@@ -59,14 +62,16 @@ export function Conversation({ session, project, interactions, cursor, canAct, o
   useEffect(() => { setLocalUnknown(Boolean(savedDelivery())); }, [session.generation]);
 
   const setText = (value: string) => { setDraft(value); saveDraft(session.id, value); };
-  async function send(text = draft) {
-    if (guard.current || !inputEnabled || !text.trim()) return;
+  async function send(text = draft, retry = false) {
+    const previous = retry ? savedDelivery() : null;
+    if (previous) text = previous.text;
+    if (guard.current || (!inputEnabled && !(previous && canAct && loaded && session.controlEnabled && !remoteUnknown)) || !text.trim()) return;
     guard.current = true; setBusy(true); setError('');
-    const clientId = crypto.randomUUID();
+    const clientId = previous?.clientId ?? crypto.randomUUID();
     const targetGeneration = session.generation;
     try {
       // Persist intent before crossing the network so a reload cannot create a duplicate.
-      try { localStorage.setItem(deliveryKey, clientId); }
+      try { localStorage.setItem(deliveryKey, JSON.stringify({ clientId, text: text.trim() })); }
       catch { throw new ApiError('Güvenli gönderim kaydı saklanamadı. Tarayıcı depolamasına izin verin.', 400, 'STORAGE_REQUIRED'); }
       await api<Message>(`/sessions/${encodeURIComponent(session.id)}/messages`, { clientId, text: text.trim(), generation: targetGeneration });
       localStorage.removeItem(deliveryKey); setLocalUnknown(false);
@@ -116,11 +121,12 @@ export function Conversation({ session, project, interactions, cursor, canAct, o
     {newEvents && <Button className="new-events" onClick={() => { bottom.current?.scrollIntoView({ block: 'end', behavior: 'instant' }); setNewEvents(false); }}><ArrowDown size={16} />Yeni olaylar</Button>}
     <div className="composer-area">
       {error && <Notice tone="error">{error}</Notice>}
-      {localUnknown && <Notice>Konuşmayı inceleyip mesajın ulaşmadığını doğruladıysanız taslağı yeniden göndermek için kilidi açın.<Button onClick={() => { setLocalUnknown(false); setError(''); }} className="subtle" disabled={!loaded || !canAct}>Oturumu kontrol ettim; taslağı aç</Button></Notice>}
+      {localUnknown && <Notice>Gönderim yanıtı alınamadı. Yeniden deneme aynı mesajı ve gönderim kimliğini kullanır; sunucu daha önce aldıysa ikinci kez kuyruğa eklemez.<Button onClick={() => void send(draft, true)} className="subtle" disabled={!loaded || !canAct || busy}>Aynı kimlikle yeniden dene</Button></Notice>}
       {remoteUnknown && <Notice>Önceki mesajın teslimatı belirsiz. Yeni mesaj gönderimi, oturum durumu doğrulanana kadar kapalı.</Notice>}
       <div className="composer-target"><LockKeyhole size={14} /><span>Hedef: <strong>{project.name}</strong> / {session.title}</span></div>
       <form className="composer" onSubmit={event => { event.preventDefault(); void send(); }}><label className="sr-only" htmlFor="message-draft">Bu oturuma mesaj</label><textarea id="message-draft" placeholder={session.controlEnabled ? 'Bu projede ne yapılmasını istiyorsunuz?' : 'Kontrol devrinden sonra göndermek için taslak yazın'} value={draft} onChange={event => setText(event.target.value)} rows={3} maxLength={100000} disabled={busy} /><div className="composer-bottom"><span className="hint">{!canAct ? 'Gönderim kapalı · Taslak bu oturumda kalır' : !session.controlEnabled ? 'Yalnız izleme · Taslak saklanır' : 'Taslak yalnız bu oturuma aittir'}</span><Button type="submit" className="primary" busy={busy} disabled={!inputEnabled || !draft.trim()} aria-label="Mesajı bu oturuma gönder"><Send size={17} /><span>Gönder</span></Button></div></form>
       <div className="composer-help"><Button className="subtle compact" onClick={() => void send('Mevcut çalışmanın durumunu, tamamlanan işleri, doğrulama sonuçlarını ve varsa engelleri kısaca raporla.')} disabled={!inputEnabled || busy || !!draft.trim()}>Durum raporu iste</Button><span>Ajana yeni bir mesaj gönderir.</span></div>
+      <ReviewPanel session={session} cursor={cursor} canAct={canAct} />
     </div>
     {confirm && <Modal title={confirm === 'stop' ? 'Çalışan ajanı durdur' : 'Oturumu kontrollü devral'} onClose={() => setConfirm(null)} busy={busy}><div className="target-box"><strong>{project.name} / {session.title}</strong><span>{project.host}</span><code>{project.cwd}</code><code>Oturum: {session.id}</code><code>Nesil: {session.generation}</code></div><Notice>{confirm === 'stop' ? 'Çalışan tur durdurulur ve sıradaki mesajlar iptal edilir. Araçların daha önce yaptığı değişiklikler geri alınmaz. Yeni süreç nesliyle daha sonra yeni bir mesaj gönderebilirsiniz.' : 'Kaynak sürecin kapandığı sunucuda doğrulanır. Kaynak süreç canlıysa devir reddedilir. Kapatmak için kaynak terminali kullanın; bu işlem kaynak sürece son vermez.'}</Notice>{error && <Notice tone="error">{error}</Notice>}<div className="modal-actions"><Button onClick={() => setConfirm(null)} disabled={busy}>Vazgeç</Button><Button className={confirm === 'stop' ? 'danger' : 'primary'} onClick={() => void action()} busy={busy} disabled={!canAct}>{confirm === 'stop' ? 'Bu oturumu durdur' : 'Doğrula ve devral'}</Button></div></Modal>}
   </article>;

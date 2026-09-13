@@ -44,6 +44,7 @@ body{font-size:16px}
 .conversation-heading{max-height:45%;overflow:auto}
 .conversation-title{flex-wrap:wrap;align-items:center}
 .conversation-title>div.conversation-project-icon{flex:0 0 40px}
+.review-actions{display:flex;gap:8px;align-items:center;flex-wrap:wrap}.review-panel{margin-top:6px}.review-panel .notice{margin-top:8px}
 .conversation-title>div:not(.conversation-project-icon){flex:1;min-width:100px}
 .conversation-title h2{font-size:18px;line-height:1.4}
 .conversation-title>.badge{margin-left:auto}

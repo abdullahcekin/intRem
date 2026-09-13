@@ -49,6 +49,30 @@ try {
   await page.getByRole('button', { name: 'Oturumu oluştur' }).click();
   await waitFor(() => store.listSessions().length === 1, 'oturum');
   const session = store.listSessions()[0];
+  const sentIds = [];
+  let drop = true;
+  await page.route('**/api/sessions/*/messages', async route => {
+    if (route.request().method() !== 'POST') return route.continue();
+    sentIds.push(route.request().postDataJSON().clientId);
+    if (drop) { drop = false; return route.abort('failed'); }
+    return route.continue();
+  });
+  await page.getByLabel('Bu oturuma mesaj', { exact: true }).fill('Belirsiz HTTP gönderim testi');
+  await page.getByRole('button', { name: 'Mesajı bu oturuma gönder' }).click();
+  await page.getByRole('button', { name: 'Aynı kimlikle yeniden dene' }).waitFor();
+  await page.reload();
+  await page.getByRole('button', { name: 'Aynı kimlikle yeniden dene' }).waitFor();
+  assert.equal(await page.getByRole('button', { name: 'Mesajı bu oturuma gönder' }).isDisabled(), true);
+  await page.getByRole('button', { name: 'Aynı kimlikle yeniden dene' }).click();
+  await waitFor(() => store.listMessages(session.id).some(m => m.role === 'user'), 'aynı kimlikle gönderim');
+  assert.equal(sentIds.length, 2); assert.equal(sentIds[0], sentIds[1]);
+  assert.equal(store.listMessages(session.id).filter(m => m.role === 'user').length, 1);
+  store.cancelMessage(store.listMessages(session.id).find(m => m.role === 'user').id);
+  store.setSetting('runnerHeartbeat', new Date().toISOString());
+  await page.getByRole('button', { name: 'Codex ile incele' }).click();
+  await page.getByRole('button', { name: 'İncelemeyi başlat', exact: true }).click();
+  await waitFor(() => store.listReviews(session.id).length === 1, 'Codex inceleme isteği');
+  store.updateReview(store.listReviews(session.id)[0].id, 'completed', 'Tarayıcı test verisi: inceleme çıktısı.', 'test-revision', 0);
   store.appendMessage(session.id, 'assistant', 'Proje hazır. Sonraki adım için tercihinizi bekliyorum.');
   const interaction = store.createInteraction({ sessionId: session.id, generation: session.generation, requestId: 'browser-fixture-question', kind: 'question', toolName: 'AskUserQuestion', input: { questions: [{ question: 'Hangi ortamda devam edelim?', options: [{ label: 'Pilot', description: 'Yalıtılmış deneme ortamı' }, { label: 'Geliştirme', description: 'Yerel geliştirme ortamı' }] }] }, expiresAt: new Date(Date.now() + 600000).toISOString() });
   store.updateSession(session.id, { state: 'waiting_answer' });
@@ -96,7 +120,7 @@ try {
   abort.abort();
   await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE'], screenshots: output }));
+  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui'], screenshots: output }));
 } finally {
   await browser?.close();
   await app.close(); store.close();

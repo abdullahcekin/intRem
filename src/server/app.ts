@@ -103,6 +103,14 @@ export async function createApp({ config, store = new Store(config.dbPath), auth
   });
   app.post('/api/sessions/:id/messages', async req => store.enqueueMessage(idParam(req), z.object({ clientId: z.string().min(1).max(100), text: z.string().trim().min(1).max(32000), generation: z.string().min(1) }).parse(req.body)));
   app.post('/api/messages/:id/cancel', async req => store.cancelMessage(idParam(req)));
+  app.get('/api/sessions/:id/reviews', async req => { const session = sessionById(idParam(req)); return { reviews: store.listReviews(session.id) }; });
+  app.post('/api/sessions/:id/reviews', async req => {
+    const input = z.object({ generation: z.string(), clientId: z.string().uuid() }).parse(req.body);
+    const heartbeat = store.getSetting<string | null>('runnerHeartbeat', null);
+    if (!heartbeat || Date.now() - Date.parse(heartbeat) > 15000) throw new AppError(409, 'RUNNER_OFFLINE', 'Çalıştırıcı çevrimdışı.');
+    return store.requestReview(idParam(req), input.generation, input.clientId);
+  });
+  app.post('/api/reviews/:id/cancel', async req => store.cancelReview(idParam(req)));
   app.post('/api/interactions/:id/decision', async req => {
     const body = z.object({ generation: z.string(), contentHash: z.string(), behavior: z.enum(['allow', 'deny']), answers: z.record(z.string(), z.string().max(10000)).optional(), reason: z.string().max(2000).optional() }).parse(req.body);
     return store.decideInteraction(idParam(req), { generation: body.generation, contentHash: body.contentHash, decision: { behavior: body.behavior, ...(body.answers ? { answers: body.answers } : {}), ...(body.reason ? { reason: body.reason } : {}) }, deviceId: getIdentity(req)!.device.id });

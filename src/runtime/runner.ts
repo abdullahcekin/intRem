@@ -5,6 +5,7 @@ import type { Store } from '../server/store.js';
 import type { Message, Session } from '../shared/types.js';
 import { allowedProjectPath, discoverSessions, isSourceAlive } from './discovery.js';
 import { RunnerLock } from './lock.js';
+import { ReviewWorker } from './reviewer.js';
 
 export interface RuntimeQuery extends AsyncIterable<SDKMessage> {
   interrupt(): Promise<unknown>;
@@ -15,6 +16,7 @@ export interface RunnerOptions {
   allowedRoots: string[];
   claudeHome: string;
   claudeExecutable?: string | null;
+  codexExecutable?: string;
   pollIntervalMs?: number;
   interactionPollMs?: number;
   interactionTimeoutMs?: number;
@@ -68,16 +70,21 @@ export class Runner {
   private ticking: Promise<void> | null = null;
   private running = false;
   private readonly lock: RunnerLock;
+  private readonly reviewer: ReviewWorker | undefined;
   private readonly callbacks = new Set<Promise<PermissionResult | null>>();
 
-  constructor(private readonly store: Store, private readonly options: RunnerOptions) { this.lock = new RunnerLock(store.db); }
+  constructor(private readonly store: Store, private readonly options: RunnerOptions) {
+    this.lock = new RunnerLock(store.db);
+    if (options.codexExecutable) this.reviewer = new ReviewWorker(store, { allowedRoots: options.allowedRoots, codexExecutable: options.codexExecutable });
+  }
 
   async start(): Promise<void> {
     if (this.running) return;
     await this.lock.acquire();
     this.running = true;
     try {
-      this.store.recoverDeliveries();
+    this.store.recoverDeliveries();
+    this.reviewer?.recover();
       await this.tick();
       this.timer = setInterval(() => { void this.tick().catch(() => {
         if (this.running) this.store.event('runner.error', null, { code: 'RUNNER_POLL_FAILED' });
@@ -93,6 +100,7 @@ export class Runner {
   }
 
   private async poll(): Promise<void> {
+    await this.reviewer?.tick();
     this.store.setSetting('runnerHeartbeat', new Date().toISOString());
     this.store.expireInteractions();
     for (const session of this.store.listSessions()) {
@@ -281,6 +289,7 @@ export class Runner {
     this.running = false;
     if (this.timer) clearInterval(this.timer);
     if (this.ticking) await this.ticking;
+    await this.reviewer?.stop();
     await Promise.all([...this.active.values()].map(runtime => this.closeActive(runtime, false)));
     await Promise.allSettled([...this.callbacks]);
     this.store.setSetting('runnerHeartbeat', '');

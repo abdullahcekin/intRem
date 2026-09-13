@@ -36,10 +36,10 @@ API ve oturum çalıştırıcısı ayrı süreçlerdir. Veri SQLite'ta saklanır
 | Passkey, Origin/CSRF, cihaz iptali | Uygulanmış; WebAuthn tarayıcı doğrulaması var |
 | Kuyruk, ilk kararın kazanması, SSE devam kimliği | Uygulanmış; süreç yarışı ve kesinti testleri var |
 | Mobil konuşma, soru/izin kartları, çevrimdışı taslak | Uygulanmış; 320–1440 px tarayıcı kontrolü var |
-| Claude çalıştırıcı ve kontrollü devir | Uygulanmış; gerçek VDS pilotu bekliyor |
+| Claude çalıştırıcı ve kontrollü devir | Gerçek VDS mesajı, geçmiş okuma ve aynı konuşmayı restart sonrası sürdürme geçti; aktif kaynak süreçler kapatılmadı |
 | Web Push ve proje/cihaz tercihleri | Uygulanmış; gerçek telefon teslimi bekliyor |
 | OmniRoute | Sağlık görünümü var; hesap havuzu ve bütçeli fallback açık iş |
-| Codex | Sağlık görünümü var; bağımsız inceleme akışı açık iş |
+| Codex | Kalıcı inceleme kuyruğu, salt okunur çalıştırma, iptal ve değişen kod kontrolü uygulandı; gerçek CLI pilotu bekliyor |
 
 Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin mesajını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Kaynak zaman damgaları SDK tarafından verilmediğinden aktarılan mesajların zamanı aktarım anıdır. Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Plan içeriği elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
 

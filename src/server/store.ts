@@ -2,7 +2,7 @@ import { createHash, randomUUID } from 'node:crypto';
 import { mkdirSync } from 'node:fs';
 import { dirname } from 'node:path';
 import { DatabaseSync } from 'node:sqlite';
-import type { AppEvent, DecisionInput, Interaction, Message, Project, Session } from '../shared/types.js';
+import type { AppEvent, DecisionInput, Interaction, Message, Project, Review, Session } from '../shared/types.js';
 import { AppError } from './errors.js';
 
 type Row = Record<string, unknown>;
@@ -95,6 +95,11 @@ export class Store {
         sessionId TEXT REFERENCES sessions(id), data TEXT NOT NULL CHECK(json_valid(data)), createdAt TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS settings (key TEXT PRIMARY KEY, value TEXT NOT NULL CHECK(json_valid(value)));
+      CREATE TABLE IF NOT EXISTS reviews (
+        id TEXT PRIMARY KEY, sessionId TEXT NOT NULL REFERENCES sessions(id), generation TEXT NOT NULL, clientId TEXT NOT NULL,
+        status TEXT NOT NULL, createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, output TEXT NOT NULL DEFAULT '', revision TEXT, exitCode INTEGER,
+        UNIQUE(sessionId,clientId)
+      );
     `);
   }
 
@@ -116,6 +121,48 @@ export class Store {
     const session = this.getSession(id);
     if (!session) throw new AppError(404, 'SESSION_NOT_FOUND', 'Oturum bulunamadı.');
     return session;
+  }
+
+  listReviews(sessionId?: string): Review[] {
+    return (sessionId ? this.db.prepare('SELECT * FROM reviews WHERE sessionId = ? ORDER BY createdAt').all(sessionId) : this.db.prepare('SELECT * FROM reviews ORDER BY createdAt').all()) as unknown as Review[];
+  }
+  getReview(id: string): Review | undefined { return this.db.prepare('SELECT * FROM reviews WHERE id = ?').get(id) as unknown as Review | undefined; }
+  hasActiveReview(projectId: string): boolean {
+    return !!this.db.prepare("SELECT 1 FROM reviews r JOIN sessions s ON s.id=r.sessionId WHERE s.projectId=? AND r.status IN ('queued','running','cancelling') LIMIT 1").get(projectId);
+  }
+  requestReview(sessionId: string, generation: string, clientId: string): Review {
+    text(clientId, 'clientId');
+    return this.transaction(() => {
+      const session = this.requiredSession(sessionId);
+      const existing = this.listReviews(sessionId).find(r => r.clientId === clientId);
+      if (existing) { if (existing.generation !== generation) conflict('STALE_GENERATION', 'İnceleme nesli değişti.'); return existing; }
+      this.controllable(session);
+      if (session.generation !== generation) conflict('STALE_GENERATION', 'Oturum değişti.');
+      if (this.hasActiveReview(session.projectId) || this.listSessions().some(s => s.projectId === session.projectId && !['idle', 'offline'].includes(s.state))) conflict('PROJECT_BUSY', 'Projedeki etkin işi tamamlayıp incelemeyi başlatın.');
+      const stamp = now(), id = randomUUID();
+      this.db.prepare("INSERT INTO reviews(id,sessionId,generation,clientId,status,createdAt,updatedAt) VALUES(?,?,?,?,'queued',?,?)").run(id, sessionId, generation, clientId, stamp, stamp);
+      const review = this.getReview(id)!;
+      this.event('review.queued', sessionId, { review });
+      return review;
+    });
+  }
+  updateReview(id: string, status: Review['status'], output = '', revision: string | null = null, exitCode: number | null = null): Review {
+    return this.transaction(() => {
+      const existing = this.getReview(id);
+      if (!existing) throw new AppError(404, 'REVIEW_NOT_FOUND', 'İnceleme bulunamadı.');
+      this.db.prepare('UPDATE reviews SET status=?,output=?,revision=?,exitCode=?,updatedAt=? WHERE id=?').run(status, output.slice(-64000), revision ?? existing.revision, exitCode, now(), id);
+      const review = this.getReview(id)!;
+      this.event(`review.${status}`, review.sessionId, { review });
+      return review;
+    });
+  }
+  cancelReview(id: string): Review {
+    return this.transaction(() => {
+      const review = this.getReview(id);
+      if (!review) throw new AppError(404, 'REVIEW_NOT_FOUND', 'İnceleme bulunamadı.');
+      if (!['queued', 'running'].includes(review.status)) conflict('REVIEW_FINISHED', 'İnceleme artık durdurulabilir durumda değil.');
+      return this.updateReview(id, review.status === 'queued' ? 'cancelled' : 'cancelling');
+    });
   }
 
   private controllable(session: Session): void {
@@ -244,6 +291,7 @@ export class Store {
     return this.transaction(() => {
       const session = this.requiredSession(sessionId);
       if (session.state !== 'idle' || session.source !== 'managed' || !session.controlEnabled || !this.getSetting('remoteControlEnabled', true)) return undefined;
+      if (this.hasActiveReview(session.projectId)) return undefined;
       if (this.db.prepare("SELECT id FROM interactions WHERE sessionId = ? AND generation = ? AND (status = 'pending' OR (status = 'answered' AND appliedAt IS NULL)) LIMIT 1").get(sessionId, session.generation)) return undefined;
       const row = this.db.prepare("SELECT * FROM messages WHERE sessionId = ? AND state = 'queued' AND generation = ? ORDER BY rowid LIMIT 1").get(sessionId, session.generation);
       if (!row) return undefined;

@@ -8,6 +8,7 @@ const runner = new Runner(store, {
   allowedRoots: config.allowedRoots,
   claudeHome: config.claudeHome,
   claudeExecutable: config.claudeExecutable,
+  codexExecutable: config.codexExecutable,
 });
 let stopping = false;
 const shutdown = async () => {

@@ -35,6 +35,11 @@ export interface AppSnapshot {
   projects: Project[]; sessions: Session[]; interactions: Interaction[]; cursor: number;
   remoteControlEnabled: boolean;
 }
+export interface Review {
+  id: string; sessionId: string; generation: string; clientId: string;
+  status: 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'stale' | 'interrupted' | 'cancelled';
+  createdAt: string; updatedAt: string; output: string; revision: string | null; exitCode: number | null;
+}
 export interface HealthReport {
   bridge: { ok: boolean; version: string };
   runner: { ok: boolean; lastSeenAt: string | null };
