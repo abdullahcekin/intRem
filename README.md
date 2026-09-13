@@ -4,6 +4,8 @@ Claude Code oturumlarını telefondan izlemek, mesaj göndermek ve bekleyen soru
 
 Geliştirme sürümüdür. İlerleme ve kabul ölçütleri [GitHub Issues](https://github.com/abdullahcekin/intRem/issues) üzerinden takip edilir. Doğrulanmış özellikler ve canlı entegrasyon sınırları her teslimde güncellenir.
 
+Yeni bir oturumdan devam etmek için önce [güncel durum ve devam rehberini](docs/STATUS.md) okuyun. [AGENTS.md](AGENTS.md), yeni ajanın hangi belgeleri ve canlı kontrolleri esas alacağını belirtir.
+
 ## Kapsam
 
 - Tek kullanıcı, tek Linux sunucu, birden fazla proje.
