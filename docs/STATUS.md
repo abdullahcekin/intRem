@@ -18,6 +18,7 @@ Son güncelleme: **2026-09-13**. Bu bir durum kaydıdır; yeni oturumda Git, CI 
 - Bekleyen mesaj/karar/inceleme olmadığı tekrar doğrulandı; servisler durdurularak özel veri yedeği alındı ve SQLite bütünlüğü doğrulandı. Ardından temiz checkout fast-forward edildi ve üretim derlemesi geçti.
 - API ve runner aynı kaynak/derleme üzerinden yeniden başlatıldı. İkisi active; sağlık 200, girişsiz API 401, runner heartbeat güncel. Dağıtım sonunda yerel ve VDS çalışma ağaçları temizdi.
 - Son model açıklaması dağıtımında yalnız API yeniden başlatıldı; runner kodu değişmedi ve PID'si korundu. Son kontrolde aktif mesaj ve bekleyen/uygulanmamış karar sayıları sıfır.
+- DNS A kaydı ve HTTPS reverse proxy etkinleştirildi. Geçerli Let's Encrypt sertifikasıyla TLS 1.3 bağlantısı, HTTP→HTTPS 308, HTTPS sağlık 200, girişsiz snapshot 401 ve tarayıcıda ilk cihaz ekranı doğrulandı. Caddy'nin özel ağdan API'ye erişimi dar güvenlik duvarı kuralıyla sağlandı; API portu internete açılmadı. Mevcut Caddy site blokları ve API/runner süreçleri korundu.
 - Kaynak Claude/tmux pane PID'leri dağıtım öncesi ve sonrası eşleşti. API'yi tek başına yeniden başlatırken runner'ın korunması önceki pilotta ayrıca doğrulanmıştı.
 - Ürün henüz tüm kabul koşullarıyla tamamlanmış değildir. Aşağıdaki açık işler geçerlidir.
 
@@ -38,15 +39,15 @@ Tarayıcı testi sanal WebAuthn cihazı kullanır. Gerçek telefon/passkey/push 
 1. **[#3: Plan onayının dağıtım kabulü](https://github.com/abdullahcekin/intRem/issues/3).** Hook aktarımı ve ayrı Runner + Store canlı pilotu doğrulandı; bağımsız inceleme, yayın CI ve dağıtım tamamlandı. Kurulu runner'ın yeni plan pilotu haftalık sağlayıcı kotasında durdu. Kota veya hesap kurulumu çözüldüğünde yalnız bu eksik pilotu çalıştırın. Plan dosyası tahmin edilmez; CLI'nin hook'a eklediği snapshot kullanılır.
 2. **[#8: Kapanış/kuyruk düzeltmeleri](https://github.com/abdullahcekin/intRem/issues/8) kapatıldı.** Tüketicisiz karar iptali, SDK tüketicisini bekleyen kapanış ve Codex süreç grubu iptali RED/GREEN ile doğrulandı. `unref` erken süreç çıkışı standalone Linux testiyle düzeltildi; bağımsız inceleme ve yayın CI geçti. **[#6: Yedekten API açılışı](https://github.com/abdullahcekin/intRem/issues/6)** ayrı dizinde geçti; gerçek cihazla geri yükleme ve uzun pilot açık.
 3. **[#5: OmniRoute yönlendirmesi](https://github.com/abdullahcekin/intRem/issues/5).** Sağlık görünümü var; üç hesap zinciri, ayrı model havuzları, güvenilir hesap telemetrisi ve bütçeli fallback henüz tamamlanmadı. 2026-09-13 yeniden sayımında hesap/combo/eşleme sayıları sıfır. Kurulu 3.8.50 bütçe kontrolü atomik harcama rezervasyonu yapmıyor ve sıfır limit sınırsız anlamına geliyor; sert bütçe garantisi olarak kullanmayın, ücretli fallback kapalı kalmalı.
-4. **[#6: Alan adı ve telefon kabulü](https://github.com/abdullahcekin/intRem/issues/6).** DNS kaydı, HTTPS proxy aktivasyonu, fiziksel telefonda ilk passkey/PWA/push ve uzun pilot açık.
+4. **[#6: Telefon kabulü](https://github.com/abdullahcekin/intRem/issues/6).** DNS ve HTTPS tamamlandı; fiziksel telefonda ilk passkey/PWA/push, gerçek cihazla geri yükleme ve uzun pilot açık. İlk cihaz ekranının açılması bu kabulün yerine geçmez.
 
-Kullanıcıdan gereken kurulum bilgileri: alan adı DNS kaydı, OmniRoute içinde hesapların bağlanması ve günlük azami fallback bütçesi. Kimlik bilgilerini sohbet veya issue üzerinden istemeyin. Bütçe henüz verilmedi; ücretli fallback kapalı.
+Kullanıcıdan gereken kurulum adımları: ilk fiziksel cihazı bağlama, OmniRoute içinde hesapları bağlama ve günlük azami fallback bütçesini belirleme. Kimlik bilgilerini sohbet veya issue üzerinden istemeyin. Bütçe henüz verilmedi; ücretli fallback kapalı.
 
 ## Son inceleme ve sonraki somut adım
 
 Bağımsız inceleme kapanış değişikliklerinde ek bir bulgu buldu: `force.unref()` nedeniyle ana süreç ve stdio kapandığında runner SIGKILL aşamasını beklemeyebiliyordu. Zamanlayıcı ref bırakıldı; ayrı Linux süreç testinde önce beklenen başarısızlık, sonra başarı görüldü. Son hook aktarımı ve bu düzeltmenin yeniden bağımsız incelemesi tamamlandı; spec ve kod kalitesi uygun bulundu. Bu sonuç yayın CI'sı veya fiziksel telefon kabulünün yerine geçmez.
 
-Sıradaki somut işler: DNS kaydı tamamlandığında HTTPS proxy aktivasyonu; Claude hesabında kullanılabilir kapasite sağlandığında kurulu runner plan pilotu. Fiziksel telefon kabulü ile OmniRoute hesap/bütçe kurulumu ayrı kalır. Yerel `tasks/` altındaki test raporları ve özel pilot betikleri Git'e eklenmez; önceki tamamlanmış pilotları otomatik tekrarlamayın.
+Sıradaki somut işler: HTTPS üzerinden kullanıcının ilk fiziksel cihazını bağlayıp PWA/push kabulünü yapmak; Claude hesabında kullanılabilir kapasite sağlandığında kurulu runner plan pilotunu tamamlamak. OmniRoute hesap/bütçe kurulumu ayrı kalır. Yerel `tasks/` altındaki test raporları ve özel pilot betikleri Git'e eklenmez; önceki tamamlanmış pilotları otomatik tekrarlamayın.
 
 ## Yeni oturumda devam etme
 

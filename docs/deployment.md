@@ -10,6 +10,10 @@ Claude Code ile giriş yapılmış normal kullanıcı hesabını kullanın. API 
 6. DNS A kaydını sunucuya yönlendirin. Caddy örneğini mevcut yapılandırmaya yeni site olarak ekleyin; önce doğrulayın, sonra reload edin. Caddy Docker içindeyse `127.0.0.1` konteynerin kendisidir: API'yi yalnız özel Docker köprü adresine bağlayın ve upstream olarak aynı adresi kullanın. API portunu internete açmayın.
 7. HTTPS adresinde ilk passkey kaydını yapın. Proje ekleyin, pilot mesajını gönderin, bildirimleri cihazda ve ilgili projede ayrı ayrı etkinleştirin.
 
+Caddy bir Docker konteynerindeyse upstream sağlığını host üzerinden ve Caddy konteynerinin içinden ayrı kontrol edin. Host erişimi başarılıyken konteyner isteği zaman aşımına uğrarsa köprü yönlendirmesini ve host `INPUT` güvenlik duvarını inceleyin. Gerekli izin yalnız ilgili köprü arayüzü, Caddy kaynak IP'si, özel API hedef IP'si ve TCP portuyla sınırlanmalıdır. Compose ağ ayarında doğrulanmış mevcut Caddy IP'sini sabitleyin; konteyner veya ağ yeniden oluşturulduğunda adres ve köprü arayüzünü tekrar doğrulayın. Tüm alt ağı veya interneti API portuna açmayın.
+
+Tek Caddyfile dosyası bind mount ediliyorsa host dosyasını atomik olarak başka inode ile değiştirmek konteyneri eski dosyada bırakabilir. Önce özel yedek alın, aday yapılandırmayı doğrulayın, mount'un gördüğü içeriği kontrol edin ve ardından `caddy reload` uygulayın. Son kabulde sertifika doğrulamasını kapatmadan HTTPS sağlık 200, girişsiz API 401, HTTP→HTTPS yönlendirmesi ve ilk cihaz ekranını sınayın.
+
 ## İşletim
 
 `systemctl --user status intrem-api intrem-runner` servis durumunu; `journalctl --user -u intrem-api -u intrem-runner` servis hatalarını gösterir. Logları paylaşmadan önce özel içeriği temizleyin. `/health` genel servis sağlığıdır; ayrıntılı `/api/health` giriş gerektirir.
