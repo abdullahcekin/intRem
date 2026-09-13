@@ -4,20 +4,21 @@ Son güncelleme: **2026-09-13**. Bu bir durum kaydıdır; yeni oturumda Git, CI 
 
 ## Son doğrulanmış çalışma
 
-- Çalışma dalı: `fix/resume-lifecycle-validation`; temel HEAD/origin/main: **`fa1f5428417a265178641c683439499055ed282b`**. Bu oturumdaki kaynak değişiklikleri henüz commit edilmedi, push veya normal servislere dağıtım yapılmadı.
-- Temel commit için [GitHub Actions başarılı](https://github.com/abdullahcekin/intRem/actions/runs/34763928605). Bu CI sonucu yeni çalışma ağacının kanıtı değildir.
-- **2026-09-13, son kaynakla ayrı Ubuntu doğrulaması:** tip kontrolü, **59/59 test**, üretim derlemesi ve **13 Chromium akışı** başarılı. İki gerçek Linux alt süreç testi bu sayıya dahildir.
-- Sonraki bağımsız kaynak incelemesi plan/kapanış değişikliklerini uygun buldu; yeni somut hata yok. Plan kartında metnin aynen gösterilmesi, açık kullanıcı teyidi ve eksik planın reddi eklendi; yerel Chromium kontrolü **15 akışla** geçti.
-- Gerçek Sonnet/SDK plan pilotunda `PreToolUse` planı `ask + updatedInput` ile mevcut karar callback'ine taşındı. Ayrı veri deposundaki gerçek Runner + Store pilotu: `completed`, bir plan, bir uygulanmış karar; onay sonrası plan metni ve beklenen yanıt eşleşti. Normal systemd runner ve fiziksel telefon üzerinden yeni plan kabulü henüz yapılmadı.
+- Kaynak sürümü **`d31f98b2af816b319c6bb11358fdf0fb881b26d8`**, `main` dalına yayınlandı ve normal servislere dağıtıldı. Sonraki yalnız belge commit'leri için canlı Git/CI durumunu ayrıca kontrol edin.
+- Bu kaynak sürümü için [main GitHub Actions başarılı](https://github.com/abdullahcekin/intRem/actions/runs/34773552538): Node.js 22, tip kontrolü, **59/59 test**, üretim derlemesi ve **15 Chromium akışı**. İki gerçek Linux alt süreç testi bu sayıya dahildir.
+- Bağımsız kaynak incelemesi plan/kapanış değişikliklerini uygun buldu. Pilot incelemesindeki iki P2 de karşılandı: son yanıt tam eşleşmeyle doğrulanıyor, runner pilotunun API/telefon kabulünden ayrı olduğu açıkça belirtiliyor. Plan kartı metni, açık kullanıcı teyidi ve eksik planın reddi tarayıcı testinde geçti.
+- Oturum bilgisindeki model artık **Bildirilen son model** olarak gösteriliyor; görünür açıklama bu CLI kimliğinin OmniRoute model/hesap kanıtı olmadığını belirtiyor. Bilinmeyen/bildirilen değer ve kaydırmalı açıklama 375/812/1440 px genişliklerde doğrulandı; bağımsız dar inceleme uygun.
+- Gerçek Sonnet/SDK plan pilotunda `PreToolUse` planı `ask + updatedInput` ile mevcut karar callback'ine taşındı. Ayrı veri deposundaki gerçek Runner + Store pilotu: `completed`, bir plan, bir uygulanmış karar; onay sonrası plan metni ve beklenen yanıt eşleşti. Yeni sürümle kurulu systemd runner pilotu ise sağlayıcının haftalık kullanım limitinde, plan aşamasına ulaşmadan başarısız oldu; kendi oturumu kontrollü kapandı. Bu normal servis plan kabulü ve fiziksel telefon kabulü açık kalır; otomatik tekrar veya ücretli fallback açılmadı.
 - Yedekten ayrı API açılışında SQLite bütünlüğü ve 14 tablonun kayıt sayıları eşleşti; sağlık 200, girişsiz snapshot 401, prova API kapanışı başarılı. Normal API/runner PID'leri değişmedi, ikinci runner başlatılmadı. Yedekte cihaz/passkey kaydı yoktu; gerçek cihazla geri yükleme kabulü bu kanıta dahil değildir.
 
 ## Normal servislere son dağıtım
 
 - Repo: [abdullahcekin/intRem](https://github.com/abdullahcekin/intRem)
-- Uygulama commit'i: **`623d575db0612da4cb085ddfbb6f97f65fbfd13d`**.
-- [GitHub Actions başarılı](https://github.com/abdullahcekin/intRem/actions/runs/34763293046): Node.js 22, tip kontrolü, **49 birim/entegrasyon testi**, üretim derlemesi ve Chromium akışları.
-- Aynı uygulama sürümü Ubuntu pilotuna aktarıldı. Bu kontrol sırasında yerel ve VDS çalışma ağaçları temizdi.
-- API ve runner ayrı systemd kullanıcı servisleri olarak çalışıyor. Sağlık isteği 200, girişsiz API isteği 401. API yeniden başlatılırken runner süreci korundu.
+- Uygulama commit'i: **`d31f98b2af816b319c6bb11358fdf0fb881b26d8`**; [yayın CI kanıtı](https://github.com/abdullahcekin/intRem/actions/runs/34773552538). Kapanış/plan çalışma zamanı değişiklikleri `ba43657` ile dağıtıldı; `d31f98b` yalnız model açıklamasını değiştirir.
+- Bekleyen mesaj/karar/inceleme olmadığı tekrar doğrulandı; servisler durdurularak özel veri yedeği alındı ve SQLite bütünlüğü doğrulandı. Ardından temiz checkout fast-forward edildi ve üretim derlemesi geçti.
+- API ve runner aynı kaynak/derleme üzerinden yeniden başlatıldı. İkisi active; sağlık 200, girişsiz API 401, runner heartbeat güncel. Dağıtım sonunda yerel ve VDS çalışma ağaçları temizdi.
+- Son model açıklaması dağıtımında yalnız API yeniden başlatıldı; runner kodu değişmedi ve PID'si korundu. Son kontrolde aktif mesaj ve bekleyen/uygulanmamış karar sayıları sıfır.
+- Kaynak Claude/tmux pane PID'leri dağıtım öncesi ve sonrası eşleşti. API'yi tek başına yeniden başlatırken runner'ın korunması önceki pilotta ayrıca doğrulanmıştı.
 - Ürün henüz tüm kabul koşullarıyla tamamlanmış değildir. Aşağıdaki açık işler geçerlidir.
 
 ## Uygulanmış ve doğrulanmış işler
@@ -34,8 +35,8 @@ Tarayıcı testi sanal WebAuthn cihazı kullanır. Gerçek telefon/passkey/push 
 
 ## Açık işler ve sıradaki adımlar
 
-1. **[#3: Plan onayının dağıtım kabulü](https://github.com/abdullahcekin/intRem/issues/3).** Hook üzerinden somut plan aktarımı ve Runner + Store canlı pilotu doğrulandı. Eksik/değişmiş plan, eski nesil, iptal ve tek kullanımlık karar testleri geçti. Bağımsız kaynak incelemesi tamamlandı; yayın CI'sı ve normal systemd runner üzerinden kabulü açık. Plan dosyası tahmin edilmez; CLI'nin hook'a eklediği snapshot kullanılır.
-2. **[#8: Kapanış/kuyruk düzeltmelerinin yayını](https://github.com/abdullahcekin/intRem/issues/8).** Tüketicisiz karar iptali, SDK tüketicisini bekleyen kapanış ve Codex süreç grubu iptali düzeltildi; regresyonlar RED/GREEN ile doğrulandı. Bağımsız review'da bulunan `unref` kaynaklı erken süreç çıkışı da standalone Linux testiyle düzeltildi. Son değişiklikler henüz GitHub CI veya normal servis dağıtımı görmedi. **[#6: Yedekten API açılışı](https://github.com/abdullahcekin/intRem/issues/6)** ayrı dizinde geçti; gerçek cihazla geri yükleme ve uzun pilot açık.
+1. **[#3: Plan onayının dağıtım kabulü](https://github.com/abdullahcekin/intRem/issues/3).** Hook aktarımı ve ayrı Runner + Store canlı pilotu doğrulandı; bağımsız inceleme, yayın CI ve dağıtım tamamlandı. Kurulu runner'ın yeni plan pilotu haftalık sağlayıcı kotasında durdu. Kota veya hesap kurulumu çözüldüğünde yalnız bu eksik pilotu çalıştırın. Plan dosyası tahmin edilmez; CLI'nin hook'a eklediği snapshot kullanılır.
+2. **[#8: Kapanış/kuyruk düzeltmeleri](https://github.com/abdullahcekin/intRem/issues/8) kapatıldı.** Tüketicisiz karar iptali, SDK tüketicisini bekleyen kapanış ve Codex süreç grubu iptali RED/GREEN ile doğrulandı. `unref` erken süreç çıkışı standalone Linux testiyle düzeltildi; bağımsız inceleme ve yayın CI geçti. **[#6: Yedekten API açılışı](https://github.com/abdullahcekin/intRem/issues/6)** ayrı dizinde geçti; gerçek cihazla geri yükleme ve uzun pilot açık.
 3. **[#5: OmniRoute yönlendirmesi](https://github.com/abdullahcekin/intRem/issues/5).** Sağlık görünümü var; üç hesap zinciri, ayrı model havuzları, güvenilir hesap telemetrisi ve bütçeli fallback henüz tamamlanmadı. 2026-09-13 yeniden sayımında hesap/combo/eşleme sayıları sıfır. Kurulu 3.8.50 bütçe kontrolü atomik harcama rezervasyonu yapmıyor ve sıfır limit sınırsız anlamına geliyor; sert bütçe garantisi olarak kullanmayın, ücretli fallback kapalı kalmalı.
 4. **[#6: Alan adı ve telefon kabulü](https://github.com/abdullahcekin/intRem/issues/6).** DNS kaydı, HTTPS proxy aktivasyonu, fiziksel telefonda ilk passkey/PWA/push ve uzun pilot açık.
 
@@ -45,7 +46,7 @@ Kullanıcıdan gereken kurulum bilgileri: alan adı DNS kaydı, OmniRoute içind
 
 Bağımsız inceleme kapanış değişikliklerinde ek bir bulgu buldu: `force.unref()` nedeniyle ana süreç ve stdio kapandığında runner SIGKILL aşamasını beklemeyebiliyordu. Zamanlayıcı ref bırakıldı; ayrı Linux süreç testinde önce beklenen başarısızlık, sonra başarı görüldü. Son hook aktarımı ve bu düzeltmenin yeniden bağımsız incelemesi tamamlandı; spec ve kod kalitesi uygun bulundu. Bu sonuç yayın CI'sı veya fiziksel telefon kabulünün yerine geçmez.
 
-Sıradaki somut iş: commit/yayın CI kanıtını kaydedin ve etkin iş olmadığını doğrulayarak normal runner'a aktarın. Fiziksel telefon kabulü ile OmniRoute hesap/bütçe kurulumu ayrı kalır. Yerel `tasks/` altındaki test raporları ve pilot betikleri Git'e eklenmez; önceki tamamlanmış pilotları otomatik tekrarlamayın.
+Sıradaki somut işler: DNS kaydı tamamlandığında HTTPS proxy aktivasyonu; Claude hesabında kullanılabilir kapasite sağlandığında kurulu runner plan pilotu. Fiziksel telefon kabulü ile OmniRoute hesap/bütçe kurulumu ayrı kalır. Yerel `tasks/` altındaki test raporları ve özel pilot betikleri Git'e eklenmez; önceki tamamlanmış pilotları otomatik tekrarlamayın.
 
 ## Yeni oturumda devam etme
 
