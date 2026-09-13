@@ -53,7 +53,7 @@ if (process.argv[2] === 'post') {
   while (Date.now() < deadline) {
     for (const request of store.listInteractions(session.id).filter(item => item.status === 'pending')) {
       const planPath = request.input.planFilePath;
-      const recognized = approved === 0 && request.generation === session.generation && request.kind === 'plan' && request.toolName === 'ExitPlanMode' && request.input.plan === expected && typeof planPath === 'string' && path.dirname(path.resolve(planPath)) === plans;
+      const recognized = approved === 0 && request.generation === session.generation && request.kind === 'plan' && request.toolName === 'ExitPlanMode' && request.input.plan === expected && typeof planPath === 'string' && path.isAbsolute(planPath) && path.dirname(path.resolve(planPath)) === plans;
       store.decideInteraction(request.id, { generation: session.generation, contentHash: request.contentHash, deviceId: 'local-service-plan-pilot', decision: recognized ? { behavior: 'allow' } : { behavior: 'deny', reason: 'Pilot yalnız beklenen planı bir kez onaylar.' } });
       if (recognized) approved++;
     }
@@ -63,7 +63,8 @@ if (process.argv[2] === 'post') {
   }
   const decisions = store.listInteractions(session.id).filter(item => item.kind === 'plan');
   const appliedOnce = decisions.length === 1 && decisions[0].status === 'answered' && !!decisions[0].appliedAt;
-  const responseMatched = store.listMessages(session.id).some(item => item.role === 'assistant' && item.text.includes('INTREM_PLAN_OK'));
+  const finalResponse = store.listMessages(session.id).filter(item => item.role === 'assistant').at(-1);
+  const responseMatched = finalResponse?.text.trim() === 'INTREM_PLAN_OK';
   let postMatched = false;
   try {
     const evidence = JSON.parse(await readFile(evidencePath, 'utf8'));
