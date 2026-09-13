@@ -29,6 +29,43 @@ try {
   const context = await browser.newContext({ viewport: { width: 1440, height: 960 } });
   const page = await context.newPage();
   page.on('pageerror', e => errors.push(e.message));
+  await page.goto(`${origin}/info`);
+  await page.getByRole('heading', { name: 'intRem kullanım rehberi', exact: true }).waitFor({ timeout: 5000 });
+  assert.equal((await fetch(`${origin}/api/snapshot`)).status, 401, 'Public guide must not open protected data');
+  await page.getByRole('link', { name: 'Sık sorulanlar', exact: true }).click();
+  const faq = page.locator('summary').filter({ hasText: 'Başka bir cihazdan nasıl giriş yaparım?' });
+  await faq.focus();
+  await page.keyboard.press('Enter');
+  assert.equal(await faq.evaluate(node => node.parentElement.open), true, 'FAQ opens with keyboard');
+  for (const viewport of [{ width: 320, height: 740 }, { width: 375, height: 812 }, { width: 768, height: 1024 }, { width: 812, height: 375 }, { width: 1440, height: 960 }]) {
+    await page.setViewportSize(viewport);
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `guide overflow ${viewport.width}`);
+    assert.equal(await page.locator('.info-toc a, .info-header a, summary').evaluateAll(nodes => nodes.every(node => node.getBoundingClientRect().height >= 44)), true, 'guide touch targets');
+    await page.getByRole('link', { name: 'Uygulamayı aç', exact: true }).last().scrollIntoViewIfNeeded();
+    const footer = await page.getByRole('link', { name: 'Uygulamayı aç', exact: true }).last().boundingBox();
+    assert.ok(footer && footer.y >= 0 && footer.y + footer.height <= viewport.height, 'guide footer reachable');
+  }
+  await page.setViewportSize({ width: 640, height: 900 });
+  await page.evaluate(() => { document.body.style.zoom = '2'; });
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'guide 200% reflow');
+  await page.evaluate(() => { document.body.style.zoom = ''; });
+  await page.setViewportSize({ width: 375, height: 812 });
+  await page.evaluate(() => localStorage.setItem('intrem:theme', 'dark'));
+  await page.reload();
+  assert.equal(await page.locator('html').getAttribute('data-theme'), 'dark');
+  await page.evaluate(() => scrollTo(0, 0));
+  await page.screenshot({ path: path.join(output, 'info-mobile-dark.png'), fullPage: true });
+  await page.emulateMedia({ reducedMotion: 'reduce', colorScheme: 'light' });
+  await page.evaluate(() => localStorage.setItem('intrem:theme', 'system'));
+  await page.reload();
+  await page.screenshot({ path: path.join(output, 'info-mobile.png'), fullPage: true });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  await page.screenshot({ path: path.join(output, 'info-desktop.png'), fullPage: true });
+  await page.getByRole('link', { name: 'Uygulamayı aç', exact: true }).first().click();
+  await page.getByRole('heading', { name: 'İlk cihazınızı bağlayın' }).waitFor();
+  await page.getByRole('link', { name: 'Kullanım rehberi', exact: true }).click();
+  await page.getByRole('heading', { name: 'Kurulum anahtarı nedir?', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Uygulamayı aç', exact: true }).first().click();
   const cdp = await context.newCDPSession(page);
   await cdp.send('WebAuthn.enable');
   await cdp.send('WebAuthn.addVirtualAuthenticator', { options: { protocol: 'ctap2', transport: 'internal', hasResidentKey: true, hasUserVerification: true, isUserVerified: true, automaticPresenceSimulation: true } });
@@ -39,6 +76,10 @@ try {
   await page.getByRole('button', { name: 'Passkey oluştur ve bağlan' }).click();
   await page.getByRole('navigation', { name: 'Ana gezinme' }).waitFor();
   assert.equal(auth.hasCredentials(), true);
+  await page.getByRole('link', { name: 'Kullanım rehberi', exact: true }).click();
+  await page.getByRole('heading', { name: 'intRem kullanım rehberi', exact: true }).waitFor();
+  await page.getByRole('link', { name: 'Uygulamayı aç', exact: true }).first().click();
+  await page.getByRole('navigation', { name: 'Ana gezinme' }).waitFor();
   await page.getByRole('button', { name: 'Proje ekle', exact: true }).first().click();
   await page.getByLabel('Proje adı', { exact: true }).fill('Pilot uygulama');
   await page.getByLabel('Sunucudaki çalışma dizini').fill(dir);
@@ -82,6 +123,24 @@ try {
     await page.setViewportSize({ width, height: 900 });
     await page.waitForTimeout(200);
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= window.innerWidth), true, `yatay taşma ${width}`);
+  }
+  for (const viewport of [{ width: 812, height: 375 }, { width: 390, height: 400 }]) {
+    await page.setViewportSize(viewport);
+    const send = page.getByRole('button', { name: 'Mesajı bu oturuma gönder' });
+    await send.scrollIntoViewIfNeeded();
+    const hiddenScroll = await send.evaluate(node => {
+      const clipped = [];
+      for (let parent = node.parentElement; parent; parent = parent.parentElement) {
+        if (parent.scrollTop > 1 && ['hidden', 'clip'].includes(getComputedStyle(parent).overflowY)) clipped.push(parent.className);
+      }
+      return clipped;
+    });
+    assert.deepEqual(hiddenScroll, [], 'composer must be reachable without scrolling a hidden ancestor');
+    const box = await send.boundingBox();
+    const nav = await page.getByRole('navigation', { name: 'Mobil ana gezinme' }).boundingBox();
+    assert.ok(box && nav && box.y >= 0 && box.y + box.height <= nav.y, `short viewport composer reachable ${viewport.width}x${viewport.height}`);
+    assert.equal(await send.evaluate(node => { const r = node.getBoundingClientRect(); return node.contains(document.elementFromPoint(r.x + r.width / 2, r.y + r.height / 2)); }), true, 'send target not clipped');
+    await page.screenshot({ path: path.join(output, `conversation-short-${viewport.width}.png`) });
   }
   await page.setViewportSize({ width: 390, height: 844 });
   await page.screenshot({ path: path.join(output, 'conversation-mobile.png') });
@@ -156,7 +215,7 @@ try {
   abort.abort();
   await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui'], screenshots: output }));
+  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer'], screenshots: output }));
 } finally {
   await browser?.close();
   await app.close(); store.close();

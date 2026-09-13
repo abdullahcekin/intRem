@@ -161,3 +161,10 @@ body{font-size:16px}
 }
 
 .conversation>.review-panel{flex-shrink:0;margin:0;padding:6px 16px;background:var(--surface);border-bottom:1px solid var(--border)}
+
+/* Short viewports need a user-scrollable conversation when controls exceed its height. */
+@media(max-height:600px){
+  .conversation{overflow-y:auto;overscroll-behavior:contain}
+  .conversation-heading,.composer-area{max-height:none;overflow:visible}
+  .conversation>.messages{flex:0 0 auto;max-height:50dvh}
+}

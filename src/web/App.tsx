@@ -1,6 +1,6 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
-import { Activity, AlertCircle, ArrowLeft, ArrowRight, Bell, Check, ChevronRight, CirclePause, Command, Fingerprint, FolderPlus, Laptop, LoaderCircle, LockKeyhole, LogOut, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Search, Settings as SettingsIcon, ShieldCheck, Terminal, Wifi, WifiOff, X } from 'lucide-react';
+import { Activity, AlertCircle, ArrowLeft, ArrowRight, Bell, Check, ChevronRight, CirclePause, Command, Fingerprint, FolderPlus, Info, Laptop, LoaderCircle, LockKeyhole, LogOut, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Search, Settings as SettingsIcon, ShieldCheck, Terminal, Wifi, WifiOff, X } from 'lucide-react';
 import type { AppSnapshot, Device, DiscoveredSession, Interaction, Project, Session } from '../shared/types';
 import { api, errorText, setCsrfToken } from './api';
 import { displayTime, sessionLabels } from './helpers';
@@ -89,13 +89,13 @@ function Login({ auth, onAuthenticated }: { auth: AuthStatus; onAuthenticated: (
     <div className="login-symbol"><Fingerprint size={34} /></div>
     <div><p className="eyebrow">{auth.setupRequired ? 'İLK KURULUM' : 'GÜVENLİ ERİŞİM'}</p><h1>{auth.setupRequired ? 'İlk cihazınızı bağlayın' : 'Çalışmanıza bağlanın'}</h1><p className="muted">{auth.setupRequired ? 'Sunucunuzdaki kurulum anahtarıyla bu cihaz için bir passkey oluşturun.' : 'Projeleriniz ve bekleyen kararlarınız, passkey ile giriş yaptıktan sonra burada.'}</p></div>
     <form onSubmit={event => { event.preventDefault(); void login(); }}>
-      {auth.setupRequired && <><label className="field">Cihaz adı<input value={name} onChange={event => setName(event.target.value)} maxLength={80} required autoComplete="off" /></label><label className="field">Kurulum anahtarı<input type="password" value={token} onChange={event => setToken(event.target.value)} required autoComplete="off" spellCheck={false} aria-describedby="bootstrap-help" /><span id="bootstrap-help" className="hint">Sunucuda tanımladığınız bootstrap anahtarı. Bu cihazda saklanmaz.</span></label></>}
+      {auth.setupRequired && <><label className="field">Cihaz adı<input value={name} onChange={event => setName(event.target.value)} maxLength={80} required autoComplete="off" /></label><label className="field">Kurulum anahtarı<input type="password" value={token} onChange={event => setToken(event.target.value)} required autoComplete="off" spellCheck={false} aria-describedby="bootstrap-help" /><span id="bootstrap-help" className="hint">Sunucu yöneticisinden aldığınız tek kullanımlık kod. İlk passkey’i oluşturmak için kullanılır.</span></label></>}
       {!supported && <Notice>Passkey için HTTPS ve destekleyen bir tarayıcı gerekir. Uygulamayı güvenli alan adından açın.</Notice>}
       {error && <Notice tone="error">{error}</Notice>}
       <Button type="submit" className="primary full" busy={busy} disabled={!supported || (auth.setupRequired && (!token.trim() || !name.trim()))}><Fingerprint size={20} />{auth.setupRequired ? 'Passkey oluştur ve bağlan' : 'Passkey ile giriş yap'}<ArrowRight size={18} /></Button>
     </form>
     <div className="login-footnote"><ShieldCheck size={17} /><span>Bu cihazın erişimini daha sonra Ayarlar’dan iptal edebilirsiniz.</span></div>
-  </section><p className="login-caption">Tek sunucu. Tüm projeleriniz. Kontrol sizde.</p></div></main>;
+  </section><a className="login-guide" href="/info"><Info size={18} aria-hidden="true" />Kullanım rehberi</a><p className="login-caption">Tek sunucu. Tüm projeleriniz. Kontrol sizde.</p></div></main>;
 }
 
 export function App() {
@@ -195,7 +195,7 @@ export function App() {
       {snapshot && !snapshot.projects.length && <p className="hint">İlk projenizi ekleyerek başlayın.</p>}
     </div><div className="sidebar-bottom"><div className="connection-line">{online ? <Wifi size={17} /> : <WifiOff size={17} />}<span>{!online ? 'Çevrimdışı' : synced ? 'Sunucuya bağlı' : 'Eşitleniyor'}</span></div><p>{auth.device?.name || 'Doğrulanmış cihaz'}</p></div></aside>
 
-    <div className="main-area"><header className="topbar"><div className="mobile-brand"><Brand small /></div><div className="breadcrumb"><span>Çalışma alanı</span><ChevronRight size={15} /><strong>{navigation.find(item => item.id === page)?.title}</strong></div><div className="topbar-actions"><span className={`stream-state ${stream ? 'connected' : ''}`}><Radio size={14} />{stream ? 'Canlı güncellemeler' : 'Periyodik güncelleme'}</span><Button className="icon-button subtle" aria-label="Durumu yenile" title="Durumu yenile" onClick={() => void refresh()} disabled={!online} busy={refreshing}>{!refreshing && <RefreshCw size={19} />}</Button><Button className="device-avatar" onClick={() => setPage('settings')} aria-label="Cihaz ayarlarını aç"><Laptop size={20} /></Button></div></header>
+    <div className="main-area"><header className="topbar"><div className="mobile-brand"><Brand small /></div><div className="breadcrumb"><span>Çalışma alanı</span><ChevronRight size={15} /><strong>{navigation.find(item => item.id === page)?.title}</strong></div><div className="topbar-actions"><span className={`stream-state ${stream ? 'connected' : ''}`}><Radio size={14} />{stream ? 'Canlı güncellemeler' : 'Periyodik güncelleme'}</span><a className="button icon-button subtle guide-button" href="/info" aria-label="Kullanım rehberi" title="Kullanım rehberi"><Info size={20} aria-hidden="true" /></a><Button className="icon-button subtle" aria-label="Durumu yenile" title="Durumu yenile" onClick={() => void refresh()} disabled={!online} busy={refreshing}>{!refreshing && <RefreshCw size={19} />}</Button><Button className="device-avatar" onClick={() => setPage('settings')} aria-label="Cihaz ayarlarını aç"><Laptop size={20} /></Button></div></header>
       <div className="global-notices" aria-live="polite">
         {!online && <Notice>Çevrimdışısınız. Mesajınız bu oturumun taslağında kalır; bağlantı gelince kendiliğinden gönderilmez.</Notice>}
         {online && !synced && snapshot && <Notice>Güncel durum henüz doğrulanamadı. Mesaj ve karar gönderimi eşitleme tamamlanana kadar kapalı.</Notice>}

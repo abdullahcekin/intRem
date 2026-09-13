@@ -31,6 +31,12 @@ API ve oturum çalıştırıcısı ayrı süreçlerdir. Veri SQLite'ta saklanır
 
 [Uygulama sözleşmesi](docs/implementation-contract.md) · [Arayüz tasarım sistemi](docs/design-system.md) · [Ubuntu kurulumu](docs/deployment.md)
 
+## Kullanım rehberi
+
+Uygulamanın `/info` adresi giriş yapmadan açılır. Giriş ekranındaki **Kullanım rehberi** bağlantısı ve uygulamanın üst çubuğundaki bilgi simgesi aynı sayfaya götürür. Rehber; ilk kurulum anahtarının nereden alınacağını, passkey kaydını, özellikleri, günlük kullanımı ve geliştirme sürümünün sınırlarını açıklar. Gerçek kurulum kodu veya özel sunucu bilgisi içermez.
+
+Rehber ve çalışma ekranı telefon, tablet ve masaüstüne uyarlanır. Tarayıcı kontrolü rehber için 320–1440 px, yatay ekran, %200 büyütme, koyu tema ve klavye erişimini; konuşma için 812×375 ve 390×400 gibi kısa ekranlarda gönderme alanının kullanıcı tarafından kaydırılarak erişilmesini kapsar. Bu kontroller fiziksel telefon, ekran klavyesi, passkey ve Web Push kabulünün yerine geçmez.
+
 ## Mevcut durum
 
 | Alan | Durum |
