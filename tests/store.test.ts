@@ -269,6 +269,16 @@ describe('Store permission decisions', () => {
 });
 
 describe('PushService lifecycle', () => {
+  it('commits a takeover once and rejects a stale second takeover', () => {
+    const { store, project } = fixture();
+    const source = store.createSession({ projectId: project.id, source: 'imported', claudeSessionId: '12345678-1234-1234-1234-123456789012', sourcePid: 1234, sourceStart: '100' });
+    const taken = store.takeoverSession(source.id, source.generation, [{ role: 'assistant', text: '[Kaynak geçmişi] Önceki yanıt' }]);
+    expect(taken.source).toBe('managed');
+    expect(taken.generation).not.toBe(source.generation);
+    expect(() => store.takeoverSession(source.id, source.generation, [{ role: 'assistant', text: 'ikinci' }])).toThrow(expect.objectContaining({ statusCode: 409 }));
+    expect(store.listMessages(source.id).filter(m => m.role === 'assistant')).toHaveLength(1);
+  });
+
   it('does not access a closed database when an in-flight push finishes', async () => {
     vi.useFakeTimers();
     const { store, session, project } = fixture();

@@ -3,7 +3,7 @@ import path from 'node:path';
 import { query as sdkQuery, type CanUseTool, type Options, type PermissionResult, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Store } from '../server/store.js';
 import type { Message, Session } from '../shared/types.js';
-import { allowedProjectPath, isSourceAlive } from './discovery.js';
+import { allowedProjectPath, discoverSessions, isSourceAlive } from './discovery.js';
 import { RunnerLock } from './lock.js';
 
 export interface RuntimeQuery extends AsyncIterable<SDKMessage> {
@@ -116,6 +116,7 @@ export class Runner {
           this.store.event('runner.source_unverified', session.id, { code: 'SOURCE_PROCESS_UNVERIFIED' });
           continue;
         }
+        if (!active && (await discoverSessions(this.options)).some(s => s.claudeSessionId === session.claudeSessionId)) continue;
       }
       const project = this.store.getProject(session.projectId);
       if (!project) continue;

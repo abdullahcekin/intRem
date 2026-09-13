@@ -4,7 +4,6 @@ import staticFiles from '@fastify/static';
 import fs from 'node:fs';
 import path from 'node:path';
 import os from 'node:os';
-import { randomUUID } from 'node:crypto';
 import { fileURLToPath } from 'node:url';
 import { z } from 'zod';
 import { Store } from './store.js';
@@ -15,6 +14,7 @@ import { registerAuthRoutes, type Identity } from './auth-routes.js';
 import { allowedProjectPath, discoverSessions, isSourceAlive } from '../runtime/discovery.js';
 import { healthReader } from './health.js';
 import { PushService, validatePushEndpoint } from './push.js';
+import { historyReader } from './history.js';
 
 export async function createApp({ config, store = new Store(config.dbPath), auth = new Auth(store.db) }: { config: AppConfig; store?: Store; auth?: Auth }) {
   const app = Fastify({ logger: false, bodyLimit: 128 * 1024, trustProxy: false });
@@ -53,6 +53,7 @@ export async function createApp({ config, store = new Store(config.dbPath), auth
   const idParam = (req: FastifyRequest) => z.object({ id: z.string().min(1).max(100) }).parse(req.params).id;
   const sessionById = (id: string) => { const s = store.getSession(id); if (!s) throw new AppError(404, 'SESSION_NOT_FOUND', 'Oturum bulunamadı.'); return s; };
   const discoveryOptions = { claudeHome: config.claudeHome, allowedRoots: config.allowedRoots };
+  const sourceHistory = historyReader(config);
   app.get('/health', async () => ({ ok: true }));
   app.get('/api/health', healthReader(config, store));
   app.get('/api/snapshot', async () => ({ projects: store.listProjects(), sessions: store.listSessions(), interactions: store.listInteractions(), cursor: store.cursor(), remoteControlEnabled: store.getSetting('remoteControlEnabled', true) }));
@@ -90,11 +91,16 @@ export async function createApp({ config, store = new Store(config.dbPath), auth
     if (await isSourceAlive(session)) throw new AppError(409, 'SOURCE_ACTIVE', 'Kaynak Claude süreci hâlâ çalışıyor. İşi güvenle tamamlayıp terminalden çıktıktan sonra devralın.');
     const project = store.getProject(session.projectId)!;
     await allowedProjectPath(project.cwd, config.allowedRoots);
-    const changed = store.updateSession(session.id, { source: 'managed', state: 'idle', controlEnabled: true, generation: randomUUID() });
-    store.appendMessage(session.id, 'system', 'Kontrollü devir hazır. Bir sonraki mesaj kayıtlı Claude konuşmasını sürdürecek.');
-    return changed;
+    const history = await sourceHistory(session, project.cwd, true);
+    if (await isSourceAlive(session)) throw new AppError(409, 'SOURCE_ACTIVE', 'Kaynak süreç hâlâ çalışıyor.');
+    if ((await discoverSessions(discoveryOptions)).some(s => s.claudeSessionId === session.claudeSessionId)) throw new AppError(409, 'SOURCE_ACTIVE', 'Bu konuşma başka bir kaynak süreçte hâlâ çalışıyor.');
+    return store.takeoverSession(session.id, input.generation, history);
   });
-  app.get('/api/sessions/:id/messages', async req => { const session = sessionById(idParam(req)); return { messages: store.listMessages(session.id) }; });
+  app.get('/api/sessions/:id/messages', async req => {
+    const session = sessionById(idParam(req));
+    const history = session.source === 'imported' ? await sourceHistory(session, await allowedProjectPath(store.getProject(session.projectId)!.cwd, config.allowedRoots)) : [];
+    return { messages: [...history, ...store.listMessages(session.id)] };
+  });
   app.post('/api/sessions/:id/messages', async req => store.enqueueMessage(idParam(req), z.object({ clientId: z.string().min(1).max(100), text: z.string().trim().min(1).max(32000), generation: z.string().min(1) }).parse(req.body)));
   app.post('/api/messages/:id/cancel', async req => store.cancelMessage(idParam(req)));
   app.post('/api/interactions/:id/decision', async req => {

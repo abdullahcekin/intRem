@@ -51,6 +51,11 @@ export function Conversation({ session, project, interactions, cursor, canAct, o
     } catch (error) { if (sequence === loadSequence.current) { setError(errorText(error)); setLoaded(false); } }
   }, [session.id, session.generation]);
   useEffect(() => { void load(); return () => { loadSequence.current++; }; }, [load, cursor]);
+  useEffect(() => {
+    if (session.source !== 'imported') return;
+    const timer = setInterval(() => { if (navigator.onLine && document.visibilityState === 'visible') void load(); }, 5000);
+    return () => clearInterval(timer);
+  }, [session.source, load]);
   useEffect(() => { setLocalUnknown(Boolean(savedDelivery())); }, [session.generation]);
 
   const setText = (value: string) => { setDraft(value); saveDraft(session.id, value); };

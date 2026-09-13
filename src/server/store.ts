@@ -152,6 +152,18 @@ export class Store {
     });
   }
 
+  takeoverSession(id: string, generation: string, history: Pick<Message, 'role' | 'text'>[]): Session {
+    return this.transaction(() => {
+      const session = this.requiredSession(id);
+      if (session.generation !== generation || session.source !== 'imported') conflict('STALE_GENERATION', 'Devir hedefi değişti.');
+      if (!this.getSetting('remoteControlEnabled', true)) conflict('CONTROL_DISABLED', 'Uzaktan kontrol kapalı.');
+      for (const message of history) this.appendMessage(id, message.role, message.text);
+      const changed = this.updateSession(id, { source: 'managed', state: 'idle', controlEnabled: true, generation: randomUUID() });
+      this.appendMessage(id, 'system', 'Kontrollü devir hazır. Bir sonraki mesaj kayıtlı Claude konuşmasını sürdürecek. Kaynak geçmişindeki zamanlar aktarım anını gösterir.');
+      return changed;
+    });
+  }
+
   listSessions(): Session[] { return this.db.prepare('SELECT * FROM sessions ORDER BY rowid').all().map(sessionRow); }
   getSession(id: string): Session | undefined {
     const row = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id);

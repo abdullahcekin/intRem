@@ -41,7 +41,7 @@ API ve oturum çalıştırıcısı ayrı süreçlerdir. Veri SQLite'ta saklanır
 | OmniRoute | Sağlık görünümü var; hesap havuzu ve bütçeli fallback açık iş |
 | Codex | Sağlık görünümü var; bağımsız inceleme akışı açık iş |
 
-Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. Kaynak konuşmanın geçmişini arayüze aktarma ayrıca izlenmektedir. Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Plan içeriği elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
+Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin mesajını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Kaynak zaman damgaları SDK tarafından verilmediğinden aktarılan mesajların zamanı aktarım anıdır. Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Plan içeriği elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
 
 ## Yerel çalıştırma
 
