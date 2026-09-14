@@ -1,11 +1,12 @@
 import { randomUUID } from 'node:crypto';
 import path from 'node:path';
-import { query as sdkQuery, type CanUseTool, type Options, type PermissionResult, type SDKMessage, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
+import { query as sdkQuery, type CanUseTool, type Options, type PermissionResult, type SDKAssistantMessageError, type SDKMessage, type SDKRateLimitInfo, type SDKUserMessage } from '@anthropic-ai/claude-agent-sdk';
 import type { Store } from '../server/store.js';
 import type { Message, Session } from '../shared/types.js';
 import { allowedProjectPath, discoverSessions, isSourceAlive } from './discovery.js';
 import { RunnerLock } from './lock.js';
 import { ReviewWorker } from './reviewer.js';
+import { providerFailureText } from './provider-failure.js';
 
 export interface RuntimeQuery extends AsyncIterable<SDKMessage> {
   interrupt(): Promise<unknown>;
@@ -55,6 +56,8 @@ interface ActiveSession {
   input: InputStream;
   abort: AbortController;
   currentMessage: Message | null;
+  failureError?: SDKAssistantMessageError;
+  rateLimit?: SDKRateLimitInfo;
   answerReceived: boolean;
   closed: boolean;
   finished: Promise<void>;
@@ -141,6 +144,8 @@ export class Runner {
         runtime ??= this.launch(current, cwd, project.mode);
         runtime.currentMessage = message;
         runtime.answerReceived = false;
+        runtime.failureError = undefined;
+        runtime.rateLimit = undefined;
         this.store.updateSession(session.id, { state: 'working', lastActivityAt: new Date().toISOString() });
         runtime.input.push({ type: 'user', uuid: message.id as ReturnType<typeof randomUUID>, session_id: current.claudeSessionId ?? undefined, parent_tool_use_id: null, message: { role: 'user', content: message.text } });
       } catch {
@@ -196,16 +201,26 @@ export class Runner {
         if (runtime.closed || this.store.getSession(runtime.id)?.generation !== runtime.generation) break;
         if (event.type === 'system' && event.subtype === 'init') {
           this.store.updateSession(runtime.id, { claudeSessionId: event.session_id });
+        } else if (event.type === 'rate_limit_event' && runtime.currentMessage) {
+          const info = event.rate_limit_info;
+          runtime.rateLimit = info?.status === 'rejected' ? { status: 'rejected', rateLimitType: info.rateLimitType, resetsAt: info.resetsAt, errorCode: info.errorCode } : undefined;
         } else if (event.type === 'assistant' && !event.parent_tool_use_id) {
           if (runtime.seenMessages.has(event.uuid)) continue;
           runtime.seenMessages.add(event.uuid);
-          if (!event.error && typeof event.message.model === 'string' && event.message.model.trim() && !event.message.model.startsWith('<')) this.store.updateSession(runtime.id, { actualModel: event.message.model });
+          if (event.error) {
+            if (runtime.currentMessage) runtime.failureError = event.error;
+            // Synthetic error messages may echo credentials or command output.
+            continue;
+          }
+          runtime.failureError = undefined;
+          runtime.rateLimit = undefined;
+          if (typeof event.message.model === 'string' && event.message.model.trim() && !event.message.model.startsWith('<')) this.store.updateSession(runtime.id, { actualModel: event.message.model });
           const text = event.message.content.filter(block => block.type === 'text').map(block => block.text).join('\n');
           if (text) { this.store.appendMessage(runtime.id, 'assistant', text); runtime.answerReceived = true; }
         } else if (event.type === 'result' && runtime.currentMessage) {
           this.store.expireSessionInteractions(runtime.id, runtime.generation);
-          if (!runtime.answerReceived && event.subtype === 'success' && event.result) this.store.appendMessage(runtime.id, 'assistant', event.result);
-          this.store.updateMessage(runtime.currentMessage.id, { state: event.is_error ? 'failed' : 'completed', error: event.is_error ? 'Claude işlemi hata ile tamamladı.' : null });
+          if (!runtime.answerReceived && !event.is_error && event.subtype === 'success' && event.result) this.store.appendMessage(runtime.id, 'assistant', event.result);
+          this.store.updateMessage(runtime.currentMessage.id, { state: event.is_error ? 'failed' : 'completed', error: event.is_error ? providerFailureText(event.subtype, runtime.failureError, runtime.rateLimit) : null });
           this.store.updateSession(runtime.id, { state: 'idle', claudeSessionId: event.session_id, lastActivityAt: new Date().toISOString() });
           runtime.currentMessage = null;
           this.store.event('runner.turn_complete', runtime.id, { generation: runtime.generation, success: !event.is_error });

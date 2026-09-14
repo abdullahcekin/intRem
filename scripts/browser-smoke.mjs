@@ -6,6 +6,7 @@ import { chromium } from '@playwright/test';
 import { createApp } from '../dist/server/app.js';
 import { Store } from '../dist/server/store.js';
 import { Auth } from '../dist/server/auth.js';
+import { providerFailureText } from '../dist/runtime/provider-failure.js';
 
 // Geçici veriler; canlı model çağrısı veya üretim girişini atlayan yol yoktur.
 const dir = mkdtempSync(path.join(tmpdir(), 'intrem-browser-'));
@@ -109,6 +110,21 @@ try {
   assert.equal(sentIds.length, 2); assert.equal(sentIds[0], sentIds[1]);
   assert.equal(store.listMessages(session.id).filter(m => m.role === 'user').length, 1);
   store.cancelMessage(store.listMessages(session.id).find(m => m.role === 'user').id);
+  const failedMessage = store.listMessages(session.id).find(m => m.role === 'user');
+  const failureText = providerFailureText('success', 'rate_limit', { status: 'rejected', rateLimitType: 'seven_day', resetsAt: 1789459200 });
+  store.updateMessage(failedMessage.id, { state: 'failed', error: failureText });
+  await page.getByText(failureText, { exact: true }).waitFor();
+  await page.reload();
+  const diagnostic = page.getByText(failureText, { exact: true });
+  await diagnostic.waitFor();
+  await page.setViewportSize({ width: 375, height: 812 });
+  await diagnostic.scrollIntoViewIfNeeded();
+  assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, 'provider failure mobile overflow');
+  assert.equal(store.listMessages(session.id).filter(m => m.role === 'user').length, 1, 'failure reload does not resend');
+  assert.equal(store.listMessages(session.id)[0].state, 'failed');
+  await page.screenshot({ path: path.join(output, 'provider-failure-mobile.png') });
+  await page.setViewportSize({ width: 1440, height: 960 });
+  store.updateMessage(failedMessage.id, { state: 'cancelled', error: null });
   store.setSetting('runnerHeartbeat', new Date().toISOString());
   await page.getByRole('button', { name: 'Codex ile incele' }).click();
   await page.getByRole('button', { name: 'İncelemeyi başlat', exact: true }).click();
@@ -215,7 +231,7 @@ try {
   abort.abort();
   await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer'], screenshots: output }));
+  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer', 'provider-failure-mobile-reload'], screenshots: output }));
 } finally {
   await browser?.close();
   await app.close(); store.close();

@@ -54,6 +54,16 @@ Store, kendi şemasını kurar; auth modülü kendi tablolarını aynı bağlant
 
 Claude Code, [ExitPlanMode hook girdisine](https://code.claude.com/docs/en/hooks#exitplanmode) somut `plan` ve `planFilePath` alanlarını ekler; modelin doğrudan araç girdisi boş olabilir. Runner bu girdinin kopyasını `PreToolUse` üzerinden `ask + updatedInput` ile mevcut `canUseTool` karar döngüsüne taşır. Hook `allow` üretmez. Eksik plan reddedilir; kullanıcı kararı aynı oturum/nesil/istek ve içerik hash'iyle bir kez uygulanır. Onay için plan dosyası aranmaz veya diskten yeniden okunmaz; callback'in onaylanan snapshot'ı döndürülür. Plan onayı sonraki araç izinlerinin yerine geçmez.
 
+## Sağlayıcı hata açıklamaları
+
+Runner, başarısız turun açıklamasını ilgili kullanıcı mesajının mevcut `error` alanına yazar; veri şeması değişmez. Açıklama yalnız SDK'nın üst düzey `assistant.error` enumundan, aynı aktif mesajda gözlenen `rate_limit_event` alanlarından ve `result.subtype` değerinden üretilir. Ham hata yanıtı, `result.errors`, stderr veya exception metni teşhis olarak kaydedilmez. `success` alt türünde `is_error: true` olan sonuç da hata sayılır ve ham `result` metni konuşmaya eklenmez.
+
+`rate_limit` tek başına geçici hız sınırı olarak yorumlanmaz. Yalnız `status: rejected` ile bilinen abonelik penceresi birlikte gözlendiğinde kota türü belirtilir. Alanlar eksikse sınırın türü veya hata nedeni bilinmiyor olarak kalır. Kimlik, hesap erişimi, faturalandırma, model/istek, yoğunluk ve servis hataları ayrı sabit açıklamalar üretir. Turun bütçe/adım/çıktı biçimi sınırları sağlayıcı kotasıyla karıştırılmaz.
+
+Yalnız sağlayıcının bildirdiği geçerli Unix saniyesi `resetsAt`, UTC olarak gösterilir; eksik veya geçersiz zaman tahmin edilmez. Bu, mesaj sırasında gözlenen pencere zamanıdır; erişim garantisi veya otomatik yeniden gönderim talimatı değildir. Her yeni mesajda, normal üst düzey yanıt alındığında veya izin veren kota olayı geldiğinde önceki ilgili kanıt temizlenir. Başarılı sonuçta hata kalmaz. SDK bağlantısı koptuğunda veya runner yeniden başladığında mevcut `delivery_unknown` sözleşmesi korunur.
+
+Kaynak: kurulu `@anthropic-ai/claude-agent-sdk` tip sözleşmesi; [resmi TypeScript SDK referansı](https://code.claude.com/docs/en/agent-sdk/typescript) ve [Claude kullanım pencerelerinin zaman sözleşmesi](https://code.claude.com/docs/en/statusline#rate-limit-usage). OmniRoute hesap kimliği, gerçek gateway eşliği ve ücretli fallback bu açıklamalardan doğrulanmış sayılmaz.
+
 ## Doğrulama sırası
 
 1. Atomik karar, generation, idempotency ve restart testleri yazılıp beklenen başarısızlık görülür; sonra store uygulanır.

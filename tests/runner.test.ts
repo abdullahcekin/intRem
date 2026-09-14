@@ -74,6 +74,58 @@ describe('SDK runner kalıcı kuyruk ve callback yaşam döngüsü', () => {
     expect(query.inputs).toHaveLength(1);
   });
 
+  it('structured kimlik hatasını kalıcı açıklar ve ham hata içeriğini kaydetmez', async () => {
+    const message = enqueue(); await runner.tick();
+    query.emit({ type: 'assistant', parent_tool_use_id: null, uuid: 'auth-error', error: 'authentication_failed', message: { model: '<error>', content: [{ type: 'text', text: 'PRIVATE_ERROR_SENTINEL' }] } });
+    query.emit({ type: 'result', subtype: 'success', session_id: 'sdk-session', is_error: true, result: 'PRIVATE_RESULT_SENTINEL' });
+    await until(() => store.listMessages(sessionId)[0].state === 'failed');
+    expect(store.listMessages(sessionId)[0].error).toContain('Kimlik doğrulaması');
+    expect(JSON.stringify(store.listMessages(sessionId))).not.toContain('PRIVATE_');
+    expect(JSON.stringify(store.db.prepare('SELECT data FROM events').all())).not.toContain('PRIVATE_');
+    const reopened = new Store(path.join(directory, 'intrem.db'));
+    try {
+      expect(reopened.listMessages(sessionId)[0]).toEqual(store.listMessages(sessionId)[0]);
+      expect(reopened.enqueueMessage(sessionId, { clientId: message.clientId!, text: message.text, generation: store.getSession(sessionId)!.generation }).id).toBe(message.id);
+    } finally { reopened.close(); }
+    await runner.tick();
+    expect(query.inputs).toHaveLength(1);
+  });
+
+  it('aynı mesajdaki reddedilen kota penceresini açıklar, sonraki mesaja taşımaz', async () => {
+    enqueue(); await runner.tick();
+    query.emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'seven_day', resetsAt: Date.UTC(2026, 8, 15, 8) / 1000 } });
+    query.emit({ type: 'assistant', parent_tool_use_id: null, uuid: 'quota-error', error: 'rate_limit', message: { content: [{ type: 'text', text: 'PRIVATE_QUOTA' }] } });
+    query.emit({ type: 'result', subtype: 'success', session_id: 'sdk-session', is_error: true, result: 'PRIVATE_RESULT' });
+    await until(() => store.listMessages(sessionId)[0].state === 'failed');
+    expect(store.listMessages(sessionId)[0].error).toContain('7 günlük');
+    expect(store.listMessages(sessionId)[0].error).toContain('2026-09-15 08:00:00 UTC');
+    const next = enqueue('Yeni deneme'); await runner.tick();
+    query.emit({ type: 'assistant', parent_tool_use_id: null, uuid: 'limit-error', error: 'rate_limit', message: { content: [] } });
+    query.emit({ type: 'result', subtype: 'error_during_execution', session_id: 'sdk-session', is_error: true, errors: ['PRIVATE_ERROR'] });
+    await until(() => store.listMessages(sessionId).find(m => m.id === next.id)?.state === 'failed');
+    const error = store.listMessages(sessionId).find(m => m.id === next.id)?.error;
+    expect(error).toContain('hız sınırı mı yoksa kullanım kotası mı');
+    expect(error).not.toContain('2026-09-15');
+    expect(error).not.toContain('7 günlük');
+    expect(JSON.stringify(store.listMessages(sessionId))).not.toContain('PRIVATE_');
+  });
+
+  it('allowed kota olayı eski reddi temizler; alt ajan hatası ve başarı yanlış hata bırakmaz', async () => {
+    enqueue(); await runner.tick();
+    query.emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'five_hour', resetsAt: 1789459200 } });
+    query.emit({ type: 'rate_limit_event', rate_limit_info: { status: 'allowed_warning' } });
+    query.emit({ type: 'assistant', parent_tool_use_id: 'subagent', uuid: 'subagent-error', error: 'billing_error', message: { content: [] } });
+    query.emit({ type: 'result', subtype: 'error_during_execution', session_id: 'sdk-session', is_error: true, errors: ['PRIVATE_ERROR'] });
+    await until(() => store.listMessages(sessionId)[0].state === 'failed');
+    expect(store.listMessages(sessionId)[0].error).toContain('Hata nedeni belirlenemedi');
+    const next = enqueue('Başarılı tur'); await runner.tick();
+    query.emit({ type: 'assistant', parent_tool_use_id: null, uuid: 'transient-error', error: 'overloaded', message: { content: [] } });
+    query.emit({ type: 'result', subtype: 'success', session_id: 'sdk-session', is_error: false, result: 'Tamamlandı' });
+    await until(() => store.listMessages(sessionId).find(m => m.id === next.id)?.state === 'completed');
+    expect(store.listMessages(sessionId).find(m => m.id === next.id)?.error).toBeNull();
+    expect(store.listMessages(sessionId).filter(m => m.role === 'assistant').map(m => m.text)).toEqual(['Tamamlandı']);
+  });
+
   it('tam soru girdisini koruyup yalnız onaylanmış cevabı SDK callbackine uygular', async () => {
     enqueue(); await runner.tick();
     const input = { questions: [{ question: 'Renk?', header: 'Renk', options: [{ label: 'Mavi' }, { label: 'Yeşil' }] }], metadata: { hidden: 'preserved' } };
@@ -84,6 +136,17 @@ describe('SDK runner kalıcı kuyruk ve callback yaşam döngüsü', () => {
     store.decideInteraction(interaction.id, { generation: interaction.generation, contentHash: interaction.contentHash, deviceId: 'test-device', decision: { behavior: 'allow', answers: { 'Renk?': 'Mavi' } } });
     expect(await pending).toEqual({ behavior: 'allow', updatedInput: { ...input, answers: { 'Renk?': 'Mavi' } } });
     expect(store.getInteraction(interaction.id)?.appliedAt).not.toBeNull();
+  });
+
+  it('aynı turda normal yanıt alınca önceki geçici hata kanıtını temizler', async () => {
+    enqueue(); await runner.tick();
+    query.emit({ type: 'rate_limit_event', rate_limit_info: { status: 'rejected', rateLimitType: 'seven_day', resetsAt: 1789459200 } });
+    query.emit({ type: 'assistant', parent_tool_use_id: null, uuid: 'early-error', error: 'authentication_failed', message: { content: [] } });
+    query.emit({ type: 'assistant', parent_tool_use_id: null, uuid: 'recovered-answer', message: { model: 'model', content: [{ type: 'text', text: 'Kısmi yanıt' }] } });
+    query.emit({ type: 'result', subtype: 'error_during_execution', session_id: 'sdk-session', is_error: true, errors: ['PRIVATE_ERROR'] });
+    await until(() => store.listMessages(sessionId)[0].state === 'failed');
+    expect(store.listMessages(sessionId)[0].error).toContain('Hata nedeni belirlenemedi');
+    expect(store.listMessages(sessionId).filter(m => m.role === 'assistant').map(m => m.text)).toEqual(['Kısmi yanıt']);
   });
 
   it('değişen araç girdisini veya callback abortunu allow yapmaz', async () => {
