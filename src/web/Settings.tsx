@@ -19,6 +19,22 @@ export function HealthPanel({ online, stream, sessions }: { online: boolean; str
       { title: 'Codex inceleme aracı', ok: health?.codex.ok, detail: health?.codex.version ?? 'Araç doğrulanamadı; bu durum tamamlanmış review anlamına gelmez' },
       { title: 'OmniRoute', ok: health?.omniroute.ok, detail: health?.omniroute.detail ?? 'Kontrol ediliyor' },
     ].map(item => <article className="health-card" key={item.title}><div className="health-card-heading"><h2>{item.title}</h2><span className={`status-dot ${item.ok ? 'ok' : 'warning'}`} /></div><strong>{item.ok === undefined ? 'Kontrol ediliyor' : item.ok ? 'Erişilebilir' : 'Kontrol gerekiyor'}</strong><p className="muted">{item.detail}</p></article>)}</div>
+    <section className="settings-card" aria-labelledby="gateway-setup-title"><h2 id="gateway-setup-title">OmniRoute kurulumu</h2>
+      <p className="muted">Kayıt sayıları hesapların kullanılabilirliğini veya bir istekte hangi hesabın veya modelin kullanıldığını doğrulamaz. Kota, yönlendirme ve bütçe ayrıca kontrol edilmelidir.</p>
+      {health?.omniroute.setup ? <>
+        <p className="hint">Son kontrol: {new Date(health.omniroute.setup.checkedAt).toLocaleString('tr-TR')} · Yaklaşık 30 saniyede bir güncellenir.</p>
+        {[
+          { title: 'Hesap bağlantıları', value: health.omniroute.setup.connections, empty: 'Henüz hesap bağlantısı kaydı yok.' },
+          { title: 'Model havuzları (combo)', value: health.omniroute.setup.pools, empty: 'Henüz havuz kaydı yok.' },
+        ].map(item => <div className="settings-row" key={item.title}><div><h3>{item.title}</h3><p className="hint">{item.value.state === 'ok'
+          ? item.value.count === 0 ? item.empty : 'Gateway’de kayıtlı toplam sayı; etkin kullanım sayısı değildir.'
+          : item.value.state === 'auth_required' ? 'Sunucu yöneticisi salt okunur gateway erişimini yapılandırmalı veya erişim yetkisini kontrol etmelidir.'
+          : item.value.state === 'not_configured' ? 'Gateway bağlantısı henüz yapılandırılmadı.'
+          : 'Kayıt sayısı okunamadı. Bağlantıyı kontrol edip yeniden deneyin.'}</p></div>
+          <strong>{item.value.state === 'ok' ? item.value.count : item.value.state === 'auth_required' ? 'Yetki gerekiyor' : 'Bilinmiyor'}</strong>
+        </div>)}
+      </> : <p className="hint">Kontrol ediliyor</p>}
+    </section>
     <section className="settings-card"><h2>Görev ilerlemesi</h2><p className="muted">Bağlantının açık olması işin ilerlediğini göstermez. Uzun sessizlik otomatik durdurma veya yeniden başlatma tetiklemez.</p>{sessions.length ? sessions.map(s => <div className="settings-row" key={s.id}><div><strong>{s.title}</strong><p className="hint">Son ilerleme: {displayTime(s.lastActivityAt)}</p></div><span className="mono">{s.state}</span></div>) : <p className="hint">Henüz kayıtlı oturum yok.</p>}</section>
   </section>;
 }

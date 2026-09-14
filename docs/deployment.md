@@ -2,6 +2,16 @@
 
 Claude Code ile giriş yapılmış normal kullanıcı hesabını kullanın. API ve runner ayrı kullanıcı servisleridir.
 
+## OmniRoute kurulum görünürlüğü
+
+`INTREM_OMNIROUTE_URL` yalnız gateway origin'i olmalıdır: HTTPS veya loopback HTTP; kullanıcı adı, parola, alt yol, sorgu ve fragment kabul edilmez. Bu bağlantı Sistem ekranında sağlık ve kayıtlı hesap bağlantısı/model havuzu sayılarını okumak içindir; model yönlendirmesini etkinleştirmez.
+
+Kurulu OmniRoute 3.8.50, `GET /api/providers?limit=1` ve `GET /api/combos?limit=1` için yönetim erişimi ister. OmniRoute'un CLI erişim token'larında `read` kapsamı bu yollar için yeterlidir. Gateway yöneticisi bu kapsamda bir token oluşturup `INTREM_OMNIROUTE_TOKEN` değerini yalnız sunucunun özel, 600 izinli env dosyasına koyabilir; ardından API servisini yeniden başlatır. Token'ı sohbete, tarayıcıya, issue'ya veya Git'e koymayın. Provider inference anahtarı bu token'ın yerine geçmez; daha geniş yetki gerekmez.
+
+intRem yalnız sabit iki GET isteğinde Bearer token gönderir, yönlendirme izlemez ve yanıttan yalnız toplam sayıları aktarır. Her okuma 5 saniye ve 64 KiB ile sınırlıdır; sonuçlar 30 saniye önbelleklenir. Token yoksa, geçersizse veya yetkisi yetersizse ilgili sayaç “Yetki gerekiyor”; ağ, şema veya servis hatasında “Bilinmiyor” görünür. `0` yalnız doğrulanmış boş kayıt demektir. Sayılar hesapların çalıştığını, ayrı model havuzlarının doğru kurulduğunu, gerçek isteğin hesabını/modelini veya bütçe güvencesini doğrulamaz. Ücretli fallback ayrı kabul tamamlanana kadar kapalıdır.
+
+## Servis kurulumu
+
 1. Repoyu `~/apps/intrem` altına alın. Node.js 22.13+ ile `npm ci && npm run build` çalıştırın.
 2. `~/.config/intrem` ve `~/.local/share/intrem` dizinlerini 700 izinleriyle oluşturun. `deploy/env.example` dosyasını `~/.config/intrem/env` konumuna kopyalayın; gerçek kullanıcı, kök dizin ve HTTPS origin değerlerini girin. Dosya izni 600 olmalıdır. Proje kökleri JSON listesidir.
 3. `deploy/intrem-api.service` ve `deploy/intrem-runner.service` dosyalarını `~/.config/systemd/user/` altına kopyalayın.

@@ -1,4 +1,4 @@
-import { describe, it, expect, afterEach } from 'vitest';
+import { describe, it, expect, afterEach, vi } from 'vitest';
 import { mkdtempSync, rmSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
@@ -19,8 +19,21 @@ async function fixture() {
   cleanup.push(async () => { await app.close(); store.close(); rmSync(dir, { recursive: true, force: true }); });
   return { app, store, auth, session, headers, dir };
 }
-afterEach(async () => { for (const done of cleanup.splice(0)) await done(); });
+afterEach(async () => { vi.unstubAllGlobals(); for (const done of cleanup.splice(0)) await done(); });
 describe('HTTP security and command targeting', () => {
+  it('keeps gateway inventory behind authentication and Origin checks', async () => {
+    const { app, headers } = await fixture();
+    const fetchGateway = vi.fn();
+    vi.stubGlobal('fetch', fetchGateway);
+    const publicHealth = await app.inject('/health');
+    expect(publicHealth.json()).toEqual({ ok: true });
+    expect((await app.inject('/api/health')).statusCode).toBe(401);
+    expect((await app.inject({ url: '/api/health', headers: { ...headers, origin: 'https://evil.test' } })).statusCode).toBe(403);
+    expect(fetchGateway).not.toHaveBeenCalled();
+    const health = await app.inject({ url: '/api/health', headers });
+    expect(health.statusCode).toBe(200);
+    expect(health.json().omniroute.setup.connections).toEqual({ state: 'not_configured', count: null });
+  });
   it('cannot bypass authentication using non-canonical API paths', async () => {
     const { app } = await fixture();
     for (const url of ['/api/snapshot', '/%61pi/snapshot', '/api%2Fsnapshot', '//api/snapshot', '/api/../api/snapshot']) {

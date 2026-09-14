@@ -40,10 +40,19 @@ export interface Review {
   status: 'queued' | 'running' | 'cancelling' | 'completed' | 'failed' | 'stale' | 'interrupted' | 'cancelled';
   createdAt: string; updatedAt: string; output: string; revision: string | null; exitCode: number | null;
 }
+export interface OmniRouteCount {
+  state: 'ok' | 'auth_required' | 'unavailable' | 'not_configured';
+  count: number | null;
+}
+export interface OmniRouteSetup {
+  checkedAt: string;
+  connections: OmniRouteCount;
+  pools: OmniRouteCount;
+}
 export interface HealthReport {
   bridge: { ok: boolean; version: string };
   runner: { ok: boolean; lastSeenAt: string | null };
   claude: { ok: boolean; version: string | null };
-  omniroute: { ok: boolean; url: string | null; detail: string };
+  omniroute: { ok: boolean; url: string | null; detail: string; setup: OmniRouteSetup };
   codex: { ok: boolean; version: string | null };
 }

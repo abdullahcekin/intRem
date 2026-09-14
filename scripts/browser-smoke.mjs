@@ -213,6 +213,35 @@ try {
   await waitFor(async () => (await page.getByText('Çevrimdışı', { exact: false }).count()) > 0, 'çevrimdışı');
   assert.equal(await page.getByLabel('Proje bildirimleri').isDisabled(), true);
   await context.setOffline(false);
+  let gatewaySetup = {
+    checkedAt: '2026-09-14T08:00:00.000Z',
+    connections: { state: 'auth_required', count: null },
+    pools: { state: 'unavailable', count: null },
+  };
+  await page.route('**/api/health', async route => {
+    const response = await route.fetch();
+    const health = await response.json();
+    await route.fulfill({ json: { ...health, omniroute: { ...health.omniroute, setup: gatewaySetup } } });
+  });
+  await page.getByRole('button', { name: 'Sistem', exact: true }).last().click();
+  const setup = page.getByRole('region', { name: 'OmniRoute kurulumu', exact: true });
+  await setup.getByText('Yetki gerekiyor', { exact: true }).waitFor({ timeout: 5000 });
+  assert.equal(await setup.getByText('Bilinmiyor', { exact: true }).count(), 1);
+  assert.equal(await setup.getByText('0', { exact: true }).count(), 0, 'unknown gateway state is not zero');
+  await setup.getByText(/Son kontrol:/).waitFor();
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 812 });
+    await setup.scrollIntoViewIfNeeded();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `gateway setup overflow ${width}`);
+    await page.screenshot({ path: path.join(output, `gateway-setup-${width}.png`) });
+  }
+  gatewaySetup = { ...gatewaySetup, connections: { state: 'ok', count: 3 }, pools: { state: 'ok', count: 0 } };
+  await page.getByRole('button', { name: 'Yenile', exact: true }).click();
+  await setup.getByText('3', { exact: true }).waitFor();
+  await setup.getByText('0', { exact: true }).waitFor();
+  await setup.getByText(/Henüz havuz kaydı yok/).waitFor();
+  await setup.getByText(/hangi hesabın veya modelin kullanıldığını doğrulamaz/).waitFor();
+  await page.unroute('**/api/health');
   const cookies = await context.cookies();
   const identity = auth.authenticate(cookies.find(c => c.name === 'intrem_session').value);
   assert.ok(identity);
@@ -231,7 +260,7 @@ try {
   abort.abort();
   await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer', 'provider-failure-mobile-reload'], screenshots: output }));
+  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer', 'provider-failure-mobile-reload', 'gateway-setup-mobile-counts-and-access'], screenshots: output }));
 } finally {
   await browser?.close();
   await app.close(); store.close();

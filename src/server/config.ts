@@ -5,7 +5,16 @@ import fs from 'node:fs';
 export interface AppConfig {
   dataDir: string; dbPath: string; host: string; port: number; origin: string; rpId: string;
   secureCookies: boolean; allowedRoots: string[]; claudeHome: string; claudeExecutable: string;
-  codexExecutable: string; omnirouteUrl: string | null; pushSubject: string;
+  codexExecutable: string; omnirouteUrl: string | null; omnirouteToken?: string; pushSubject: string;
+}
+function omnirouteOrigin(value: string | undefined): string | null {
+  if (value === undefined) return null;
+  try {
+    const url = new URL(value);
+    if (!/^https?:\/\/[^/\\?#@]+\/?$/i.test(value) || url.username || url.password) throw new Error();
+    if (url.protocol !== 'https:' && !(url.protocol === 'http:' && ['localhost', '127.0.0.1', '[::1]'].includes(url.hostname))) throw new Error();
+    return url.origin;
+  } catch { throw new Error('INTREM_OMNIROUTE_URL HTTPS veya yerel HTTP origin olmalıdır.'); }
 }
 export function loadConfig(): AppConfig {
   const dataDir = path.resolve(process.env.INTREM_DATA_DIR ?? '.intrem/data');
@@ -24,7 +33,8 @@ export function loadConfig(): AppConfig {
     allowedRoots, claudeHome: process.env.INTREM_CLAUDE_HOME ?? path.join(os.homedir(), '.claude'),
     claudeExecutable: process.env.INTREM_CLAUDE_EXECUTABLE ?? path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'claude.exe' : 'claude'),
     codexExecutable: process.env.INTREM_CODEX_EXECUTABLE ?? path.join(os.homedir(), '.local', 'bin', process.platform === 'win32' ? 'codex.exe' : 'codex'),
-    omnirouteUrl: process.env.INTREM_OMNIROUTE_URL ?? null,
+    omnirouteUrl: omnirouteOrigin(process.env.INTREM_OMNIROUTE_URL),
+    omnirouteToken: process.env.INTREM_OMNIROUTE_TOKEN || undefined,
     pushSubject: process.env.INTREM_PUSH_SUBJECT ?? origin.origin,
   };
 }

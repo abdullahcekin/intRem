@@ -3,6 +3,7 @@ import { promisify } from 'node:util';
 import type { AppConfig } from './config.js';
 import type { Store } from './store.js';
 import type { HealthReport } from '../shared/types.js';
+import { readOmniRouteSetup } from './omniroute.js';
 const exec = promisify(execFile);
 async function version(executable: string) {
   try { const { stdout } = await exec(executable, ['--version'], { timeout: 5000, windowsHide: true, maxBuffer: 8192 }); return { ok: true, version: stdout.trim().slice(0,120) }; }
@@ -12,7 +13,7 @@ export function healthReader(config: AppConfig, store: Store) {
   let cached: HealthReport | null = null, until = 0;
   return async (): Promise<HealthReport> => {
     if (!cached || Date.now() > until) {
-      const [claude, codex] = await Promise.all([version(config.claudeExecutable), version(config.codexExecutable)]);
+      const [claude, codex, setup] = await Promise.all([version(config.claudeExecutable), version(config.codexExecutable), readOmniRouteSetup(config)]);
       let ok = false, detail = 'OmniRoute bağlantısı yapılandırılmadı. Hesap ve gerçek model doğrulanmıyor.';
       if (config.omnirouteUrl) {
         try {
@@ -22,7 +23,7 @@ export function healthReader(config: AppConfig, store: Store) {
           await response.body?.cancel();
         } catch { detail = 'OmniRoute sağlık adresine erişilemiyor. Hesap/model durumu bilinmiyor.'; }
       }
-      cached = { bridge: { ok: true, version: '0.1.0' }, runner: { ok: false, lastSeenAt: null }, claude, codex, omniroute: { ok, url: config.omnirouteUrl, detail } };
+      cached = { bridge: { ok: true, version: '0.1.0' }, runner: { ok: false, lastSeenAt: null }, claude, codex, omniroute: { ok, url: config.omnirouteUrl, detail, setup } };
       until = Date.now() + 30_000;
     }
     const lastSeenAt = store.getSetting('runnerHeartbeat', null) as string | null;

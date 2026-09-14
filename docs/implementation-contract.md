@@ -64,6 +64,14 @@ Yalnız sağlayıcının bildirdiği geçerli Unix saniyesi `resetsAt`, UTC olar
 
 Kaynak: kurulu `@anthropic-ai/claude-agent-sdk` tip sözleşmesi; [resmi TypeScript SDK referansı](https://code.claude.com/docs/en/agent-sdk/typescript) ve [Claude kullanım pencerelerinin zaman sözleşmesi](https://code.claude.com/docs/en/statusline#rate-limit-usage). OmniRoute hesap kimliği, gerçek gateway eşliği ve ücretli fallback bu açıklamalardan doğrulanmış sayılmaz.
 
+## OmniRoute kurulum sayımı
+
+Yetkili `/api/health` yanıtındaki `omniroute.setup`, kontrol zamanı ile `connections` ve `pools` sayaçlarını taşır. Her sayaç `{state,count}` biçimindedir: `ok` durumunda sıfır veya pozitif kayıt sayısı; `auth_required`, `unavailable`, `not_configured` durumlarında `null`. Public `/health` yalnız canlılık yanıtı vermeye devam eder. İki sayaçtan biri okunamasa da diğerinin doğrulanmış değeri korunur.
+
+Kurulu OmniRoute 3.8.50 kaynak sözleşmesi: `src/app/api/providers/route.ts` ve `src/app/api/combos/route.ts`, sayfalı `{connections,total}` / `{combos,total}` GET yanıtları; `src/server/authz/accessScopes.ts` ve `src/lib/accessTokens/scopes.ts`, CLI erişim token'ı için `read` yetkisi. `limit=1` ile yalnız toplam kayıt sayısı doğrulanır. Hesap adı, e-posta, model listesi, token veya ham hata intRem yanıtına ve Store'a aktarılmaz. İstekler süre/boyut sınırı ve yönlendirme yasağıyla yapılır; sonuçlar mevcut sağlık önbelleğini kullanır. Runner heartbeat önbellekten bağımsız okunur.
+
+Bu alanlar kurulum envanteridir; çalışan hesap, kota, ayrı model havuzlarının doğruluğu, gerçek istek hesabı/modeli ve harcama garantisi sayılmaz. Token kurulumu için [dağıtım rehberine](deployment.md#omniroute-kurulum-görünürlüğü) bakın. Pozitif sayı simülasyonları ve canlı yetkisiz yanıt kontrolü, gerçek hesap bağlantısı kabulünden ayrı raporlanır.
+
 ## Doğrulama sırası
 
 1. Atomik karar, generation, idempotency ve restart testleri yazılıp beklenen başarısızlık görülür; sonra store uygulanır.
