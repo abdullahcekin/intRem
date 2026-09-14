@@ -162,9 +162,93 @@ body{font-size:16px}
 
 .conversation>.review-panel{flex-shrink:0;margin:0;padding:6px 16px;background:var(--surface);border-bottom:1px solid var(--border)}
 
-/* Short viewports need a user-scrollable conversation when controls exceed its height. */
-@media(max-height:600px){
-  .conversation{overflow-y:auto;overscroll-behavior:contain}
-  .conversation-heading,.composer-area{max-height:none;overflow:visible}
-  .conversation>.messages{flex:0 0 auto;max-height:50dvh}
+/* Conversation chrome has a bounded height; only the transcript consumes the remaining space. */
+.app-layout.navigation-hidden{grid-template-columns:minmax(0,1fr)}
+.navigation-hidden>.sidebar{display:none}
+.main-area{min-height:0}
+.global-notices:empty{display:none}
+.global-notices{flex-shrink:0;max-height:25%;overflow:auto}
+.sessions-view.list-hidden{grid-template-columns:minmax(0,1fr)}
+.sessions-view.list-hidden>.session-list{display:none}
+.conversation{position:relative;overflow:hidden}
+.conversation-heading{padding:10px 18px;max-height:none;overflow:visible}
+.conversation-title{flex-wrap:nowrap;gap:10px}
+.conversation-title>.conversation-caption{flex:1;min-width:0}
+.conversation-caption .project-name{display:block;overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.conversation-caption h2{font-size:17px;overflow:hidden;display:-webkit-box;-webkit-line-clamp:2;-webkit-box-orient:vertical;line-height:1.35}
+.conversation-title>.conversation-controls{display:flex;flex:0 0 auto;min-width:0;gap:2px}
+.conversation-title>.badge{flex-shrink:0}
+.conversation-title>.button{flex-shrink:0}
+.conversation-controls .focus-exit-label{display:none}
+.messages{flex:1 1 0;min-height:0;padding:24px clamp(16px,4vw,64px);scrollbar-gutter:stable;overflow-x:hidden}
+.message{max-width:880px;margin-bottom:24px}
+.message-body{font-size:16px;line-height:1.75;padding:14px 18px;border-radius:10px;tab-size:2}
+.message.system .message-body{font-size:14px}
+.message-author time{font-size:12px}
+.message-status{font-size:12px}
+.composer-area{flex:0 0 auto;max-height:55%;overflow:auto;padding:10px clamp(16px,4vw,64px) 12px;scroll-padding:8px}
+.composer-area>form,.composer-area>.composer-target,.composer-area>.composer-help,.composer-area>.conversation-notice,.composer-area>.pending-inline{max-width:880px;margin-left:auto;margin-right:auto}
+.composer-target{font-size:12px;min-width:0;margin-bottom:6px}
+.composer-target>span{overflow:hidden;text-overflow:ellipsis;white-space:nowrap}
+.composer textarea{display:block;min-height:56px;height:64px;padding:6px 8px;font-size:16px;line-height:1.5}
+.composer-bottom{flex-wrap:nowrap;gap:8px}
+.composer-bottom>.hint{font-size:12px;min-width:0;line-height:1.35}
+.composer-bottom>.button{flex-shrink:0}
+.composer-help{display:flex;align-items:center;justify-content:space-between;gap:8px;margin-top:4px}
+.composer-help>.button{padding-top:4px;padding-bottom:4px;min-height:32px}
+.conversation-notice{display:flex;align-items:center;justify-content:space-between;gap:8px;margin:0 0 6px;color:var(--muted);font-size:13px;max-height:none;overflow:visible}
+.conversation-notice>span{display:flex;gap:6px;align-items:center;white-space:nowrap}
+.conversation-notice>.button{color:var(--primary);min-height:44px}
+.composer-area>.pending-inline{padding:4px 10px;margin-top:0;margin-bottom:6px;font-size:12px}
+.pending-inline .button{min-height:44px}
+.session-details dt{font-size:12px}
+.modal>.source-label{margin:12px 0;font-size:13px}
+.modal>.review-panel{margin-top:18px;padding-top:12px;border-top:1px solid var(--border)}
+.focus-mode .topbar,.focus-mode .global-notices,.focus-mode .mobile-nav{display:none}
+.conversation.is-focused>.conversation-heading{align-self:flex-end;margin:8px 12px 0;padding:2px;border:1px solid var(--border);border-radius:12px;background:var(--surface);box-shadow:0 2px 8px #0001}
+.is-focused .conversation-title>.mobile-back{display:none!important}
+.is-focused .conversation-title>.mobile-back,.is-focused .list-toggle,.is-focused .conversation-caption,.is-focused .conversation-title>.badge,.is-focused .details-toggle{display:none}
+.is-focused .conversation-controls .focus-toggle{width:auto;padding:8px 12px}
+.is-focused .focus-exit-label{display:inline;font-size:13px}
+.is-focused .conversation-title{gap:0}
+.is-focused>.messages{padding-top:16px}
+.reading-only>.composer-area{display:none}
+
+@media(max-width:1000px){
+  .app-layout{height:var(--app-height,100dvh)}
+  .main-area{height:100%;padding-bottom:calc(70px + env(safe-area-inset-bottom))}
+  .conversation-open{position:fixed;inset:var(--app-top,0px) 0 auto}
+  .conversation-open .main-area{padding-bottom:0}
+  .conversation-open .topbar,.conversation-open .mobile-nav{display:none}
+  .conversation-title>.list-toggle{display:none}
+  .conversation-heading{padding:8px 12px}
+  .conversation-title{display:grid;grid-template-columns:44px minmax(0,1fr) 90px;gap:0 6px}
+  .conversation-title>.mobile-back{grid-column:1;grid-row:1 / 3}
+  .conversation-title>.conversation-caption{grid-column:2;grid-row:1;min-width:0}
+  .conversation-caption h2{font-size:16px;line-height:1.35;-webkit-line-clamp:1}
+  .conversation-caption .project-name{font-size:12px}
+  .conversation-title>.badge{grid-column:2;grid-row:2;justify-self:start;margin:3px 0 0;padding:2px 5px;font-size:11px}
+  .conversation-title>.conversation-controls{grid-column:3;grid-row:1 / 3;gap:2px}
+  .messages{padding:18px 12px}
+  .message{margin-bottom:22px}
+  .message-body{padding:12px;font-size:16px;line-height:1.65}
+  .composer-area{padding:8px 12px max(8px,env(safe-area-inset-bottom));max-height:60%}
+  .composer-target{display:none}
+  .composer-help{display:none}
+  .composer textarea{height:56px;min-height:56px}
+  .composer-bottom>.hint{font-size:12px}
+  .conversation-notice{margin:0 0 4px;font-size:12px}
+  .conversation-notice>.button{font-size:12px;padding:7px 8px}
+  .composer-area>.pending-inline{margin:0 0 4px}
+  .conversation.is-focused>.conversation-heading{margin:8px 8px 0}
+  .is-focused .conversation-title{display:flex}
+  .is-focused .conversation-title>.conversation-controls{display:flex}
+  .is-focused .focus-write{font-size:13px;padding:8px 10px}
+}
+@media(max-height:450px){
+  .conversation-open .conversation-heading{padding-top:4px;padding-bottom:4px}
+  .conversation-open .conversation-caption .project-name,.conversation-open .conversation-title>.badge{display:none}
+  .conversation-open .composer-target,.conversation-open .composer-help{display:none}
+  .conversation-open .composer-area{padding-top:4px;padding-bottom:4px;max-height:65%}
+  .conversation-open .composer textarea{height:44px;min-height:44px}
 }

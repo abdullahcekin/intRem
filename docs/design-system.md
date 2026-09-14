@@ -12,7 +12,7 @@ Kaynak: `Claude_Code_Uzak_Erisim_ve_Model_Yonlendirme_Cozum_Mimarisi_Guncel.docx
 
 ## 2. Gezinme ve yerleşim
 
-Mobilde sabit alt gezinme tam dört hedef içerir. Her hedefte SVG simgesi ve görünür Türkçe etiket bulunur; yalnız simge kullanılmaz.
+Mobilde liste ve yönetim ekranlarının alt gezinmesi tam dört hedef içerir. Oturum açıldığında genel üst çubuk ve alt gezinme gizlenir; geri oku listeye ve gezinmeye döndürür. Her gezinme hedefinde SVG simgesi ve görünür Türkçe etiket bulunur.
 
 | Hedef | İçerik | Öncelikli eylem |
 | --- | --- | --- |
@@ -24,12 +24,13 @@ Mobilde sabit alt gezinme tam dört hedef içerir. Her hedefte SVG simgesi ve g�
 - 320–767 px: tek sütun. Liste ve ayrıntı ayrı görünür; geri dönüş liste konumunu ve filtresini korur. Kenar boşluğu 16 px; 320 px genişlikte 12 px kullanılabilir.
 - 768–1023 px: okunabilir genişlik korunur; kartlar bir veya iki sütun olabilir. Mesaj ve izin içeriği tek okuma sütununda kalır.
 - 1024 px ve üzeri: solda 280–320 px oturum listesi, sağda seçili oturum ayrıntısı bulunan master/detail düzeni. Ana gezinme sol bölüme taşınır. Konuşma sütunu yaklaşık 760 px ile sınırlanır.
-- Mobil alt çubuk, cihazın alt güvenli alanını hesaba katar. İçerikte çubuk yüksekliği kadar alt boşluk bulunur. Mesaj kutusu, sanal klavye ve alt gezinme birbirini örtmez; görünür ekran yüksekliği değiştiğinde düzen yeniden hesaplanır.
+- Mobil alt çubuk yalnız liste/yönetim ekranlarında yer tutar. Konuşmada kompakt başlık, kalan yüksekliği alan mesajlar ve görünür composer kullanılır; sanal klavye için Visual Viewport izlenir, cihazın alt güvenli alanı korunur.
+- Masaüstü ana gezinme ve oturum listesi bağımsız gizlenebilir. Odak modu her iki paneli, genel başlığı ve composer'ı gizler; konuşma ekranı kaplar. “Mesaj yaz” composer'ı geri açar, “Mesaj alanını gizle” tekrar kapatır. Taslak ve seçili oturum korunur; “Odaktan çık” önceki panel durumlarını geri getirir.
 - Sıralama: önce cevap bekleyen işler, ardından çalışan oturumlar ve diğerleri. Durum değişince odaktaki veya dokunulmakta olan satır aniden taşınmaz; güncellenen sıralama odak kaybettirmeden uygulanır.
 
 ## 3. Güvenli oturum başlığı
 
-Konuşma ve karar ekranının üstünde yapışkan hedef başlığı bulunur: proje adı, host, çalışma dizini, oturum kimliği ve bağlantı durumu. Dar ekranda alanlar satırlara bölünür; uzun yol satır içinde kırılır. Onaydan önce hedefi gizleyen yalnız renk veya belirsiz kısaltma kullanılmaz. Tam hedef bilgisi kopyalanabilir.
+Normal konuşma başlığı proje, oturum adı ve durumla sınırlıdır. Host, çalışma dizini, tam kimlikler, model/maliyet ve Codex incelemesi “Oturum bilgisi” penceresinde açılır. Uzun adlar başlıkta kısalır, pencerede tam gösterilir. Karar ve kontrollü devir pencerelerinde tam hedef bilgisi korunur ve kopyalanabilir. Odak modunda başlık gizlenir; bu, gönderim veya devir yetkilerini değiştirmez.
 
 Oturumun kaynağı “intRem ile başlatıldı” veya “Mevcut oturumdan devralındı” etiketiyle gösterilir. Bu etiket kontrol yetkisinin kanıtı değildir. Doğrulanmış yetenekler ayrıca gösterilir: “Mesaj gönderebilir”, “İzin yanıtlayabilir” veya “Yalnız izleme”. Yetenek ya da süreç/pane hedefi doğrulanamıyorsa ilgili eylem kapalıdır ve nedeni yazılır.
 

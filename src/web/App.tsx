@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState, type ReactNode } from 'react';
+import { createPortal } from 'react-dom';
 import { startAuthentication, startRegistration } from '@simplewebauthn/browser';
-import { Activity, AlertCircle, ArrowLeft, ArrowRight, Bell, Check, ChevronRight, CirclePause, Command, Fingerprint, FolderPlus, Info, Laptop, LoaderCircle, LockKeyhole, LogOut, MessageSquare, MoreHorizontal, Plus, Radio, RefreshCw, Search, Settings as SettingsIcon, ShieldCheck, Terminal, Wifi, WifiOff, X } from 'lucide-react';
+import { Activity, AlertCircle, ArrowLeft, ArrowRight, Bell, Check, ChevronRight, CirclePause, Command, Fingerprint, FolderPlus, Info, Laptop, LoaderCircle, LockKeyhole, LogOut, MessageSquare, MoreHorizontal, PanelLeftClose, PanelLeftOpen, Plus, Radio, RefreshCw, Search, Settings as SettingsIcon, ShieldCheck, Terminal, Wifi, WifiOff, X } from 'lucide-react';
 import type { AppSnapshot, Device, DiscoveredSession, Interaction, Project, Session } from '../shared/types';
 import { api, errorText, setCsrfToken } from './api';
 import { displayTime, sessionLabels } from './helpers';
@@ -35,7 +36,8 @@ export function Modal({ title, onClose, children, busy = false }: { title: strin
     dialog.current?.showModal();
     return () => { dialog.current?.close(); target?.focus(); };
   }, []);
-  return <dialog ref={dialog} className="modal" aria-label={title} onCancel={event => { event.preventDefault(); if (!busy) closeRef.current(); }} onKeyDown={event => {
+  return createPortal(<dialog ref={dialog} className="modal" aria-label={title} onCancel={event => { event.preventDefault(); event.stopPropagation(); if (!busy) closeRef.current(); }} onKeyDown={event => {
+    event.stopPropagation();
     if (event.key !== 'Tab') return;
     const controls = [...event.currentTarget.querySelectorAll<HTMLElement>('button:not([disabled]), a[href], input:not([disabled]), select:not([disabled]), textarea:not([disabled]), [tabindex]:not([tabindex="-1"])')].filter(node => node.getClientRects().length > 0);
     const first = controls[0], last = controls.at(-1);
@@ -45,7 +47,7 @@ export function Modal({ title, onClose, children, busy = false }: { title: strin
   }}>
     <div className="modal-heading"><h2>{title}</h2><Button className="icon-button subtle" onClick={onClose} disabled={busy} aria-label="Pencereyi kapat"><X size={22} /></Button></div>
     {children}
-  </dialog>;
+  </dialog>, document.body);
 }
 
 export function StatusBadge({ state }: { state: Session['state'] }) {
@@ -114,9 +116,27 @@ export function App() {
   const [interactionId, setInteractionId] = useState<string | null>(null);
   const [filter, setFilter] = useState('');
   const [projectFilter, setProjectFilter] = useState('');
+  const [navigationHidden, setNavigationHidden] = useState(false);
+  const [listHidden, setListHidden] = useState(false);
+  const [focusMode, setFocusMode] = useState(false);
   const [theme, setTheme] = useState(() => { try { return localStorage.getItem('intrem:theme') || 'system'; } catch { return 'system'; } });
   const refreshSequence = useRef(0);
   const eventCursor = useRef(0);
+
+  useEffect(() => {
+    const viewport = window.visualViewport;
+    const resize = () => {
+      // Mobile keyboards can resize only the visual viewport, leaving 100dvh unchanged.
+      const unzoomed = !viewport || viewport.scale === 1;
+      document.documentElement.style.setProperty('--app-height', unzoomed ? `${viewport?.height ?? window.innerHeight}px` : '100dvh');
+      document.documentElement.style.setProperty('--app-top', unzoomed ? `${viewport?.offsetTop ?? 0}px` : '0px');
+    };
+    resize();
+    viewport?.addEventListener('resize', resize);
+    viewport?.addEventListener('scroll', resize);
+    window.addEventListener('resize', resize);
+    return () => { viewport?.removeEventListener('resize', resize); viewport?.removeEventListener('scroll', resize); window.removeEventListener('resize', resize); };
+  }, []);
 
   useEffect(() => {
     const media = window.matchMedia('(prefers-color-scheme: dark)');
@@ -177,6 +197,8 @@ export function App() {
   const pending = snapshot?.interactions.filter(item => item.status === 'pending') || [];
   const selected = snapshot?.sessions.find(session => session.id === selectedId);
   const selectedProject = snapshot?.projects.find(project => project.id === selected?.projectId);
+  const conversationOpen = page === 'sessions' && Boolean(selected && selectedProject);
+  const focused = conversationOpen && focusMode;
   const interaction = snapshot?.interactions.find(item => item.id === interactionId);
   const canAct = online && synced;
   const filtered = snapshot?.sessions.filter(session => {
@@ -188,15 +210,15 @@ export function App() {
   if (!auth) return <main className="loading-page"><Brand /><p><LoaderCircle className="spinner" size={20} /> Güvenli bağlantı kontrol ediliyor…</p></main>;
   if (!auth.authenticated) return <Login auth={auth} onAuthenticated={loadAuth} />;
 
-  return <div className="app-layout">
-    <aside className="sidebar"><Brand small /><div className="workspace-label"><span className="server-dot" />Kişisel çalışma alanı</div><nav aria-label="Ana gezinme">
+  return <div className={`app-layout ${navigationHidden || focused ? 'navigation-hidden' : ''} ${conversationOpen ? 'conversation-open' : ''} ${focused ? 'focus-mode' : ''}`}>
+    <aside className="sidebar" id="workspace-navigation"><Brand small /><div className="workspace-label"><span className="server-dot" />Kişisel çalışma alanı</div><nav aria-label="Ana gezinme">
       {navigation.map(item => <button key={item.id} onClick={() => setPage(item.id)} className={`nav-item ${page === item.id ? 'active' : ''}`} aria-current={page === item.id ? 'page' : undefined}><item.icon size={20} /><span>{item.title}</span>{item.id === 'pending' && pending.length > 0 && <span className="nav-count">{pending.length}</span>}</button>)}
     </nav><div className="sidebar-projects"><div className="section-label"><span>PROJELER</span><Button className="subtle icon-button" onClick={() => setModal('project')} disabled={!canAct} aria-label="Proje ekle"><Plus size={17} /></Button></div>
       {(snapshot?.projects || []).map(project => <button className={`project-link ${projectFilter === project.id ? 'selected' : ''}`} key={project.id} onClick={() => { setProjectFilter(projectFilter === project.id ? '' : project.id); setPage('sessions'); }}><span className="project-letter">{project.name.slice(0, 1).toLocaleUpperCase('tr')}</span><span>{project.name}</span><span className="muted">{snapshot?.sessions.filter(session => session.projectId === project.id).length}</span></button>)}
       {snapshot && !snapshot.projects.length && <p className="hint">İlk projenizi ekleyerek başlayın.</p>}
     </div><div className="sidebar-bottom"><div className="connection-line">{online ? <Wifi size={17} /> : <WifiOff size={17} />}<span>{!online ? 'Çevrimdışı' : synced ? 'Sunucuya bağlı' : 'Eşitleniyor'}</span></div><p>{auth.device?.name || 'Doğrulanmış cihaz'}</p></div></aside>
 
-    <div className="main-area"><header className="topbar"><div className="mobile-brand"><Brand small /></div><div className="breadcrumb"><span>Çalışma alanı</span><ChevronRight size={15} /><strong>{navigation.find(item => item.id === page)?.title}</strong></div><div className="topbar-actions"><span className={`stream-state ${stream ? 'connected' : ''}`}><Radio size={14} />{stream ? 'Canlı güncellemeler' : 'Periyodik güncelleme'}</span><a className="button icon-button subtle guide-button" href="/info" aria-label="Kullanım rehberi" title="Kullanım rehberi"><Info size={20} aria-hidden="true" /></a><Button className="icon-button subtle" aria-label="Durumu yenile" title="Durumu yenile" onClick={() => void refresh()} disabled={!online} busy={refreshing}>{!refreshing && <RefreshCw size={19} />}</Button><Button className="device-avatar" onClick={() => setPage('settings')} aria-label="Cihaz ayarlarını aç"><Laptop size={20} /></Button></div></header>
+    <div className="main-area"><header className="topbar"><div className="mobile-brand"><Brand small /></div><div className="breadcrumb"><Button className="icon-button subtle navigation-toggle" aria-label={navigationHidden ? 'Ana gezinmeyi göster' : 'Ana gezinmeyi gizle'} title={navigationHidden ? 'Ana gezinmeyi göster' : 'Ana gezinmeyi gizle'} aria-expanded={!navigationHidden} aria-controls="workspace-navigation" onClick={() => setNavigationHidden(!navigationHidden)}>{navigationHidden ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}</Button><span>Çalışma alanı</span><ChevronRight size={15} /><strong>{navigation.find(item => item.id === page)?.title}</strong></div><div className="topbar-actions"><span className={`stream-state ${stream ? 'connected' : ''}`}><Radio size={14} />{stream ? 'Canlı güncellemeler' : 'Periyodik güncelleme'}</span><a className="button icon-button subtle guide-button" href="/info" aria-label="Kullanım rehberi" title="Kullanım rehberi"><Info size={20} aria-hidden="true" /></a><Button className="icon-button subtle" aria-label="Durumu yenile" title="Durumu yenile" onClick={() => void refresh()} disabled={!online} busy={refreshing}>{!refreshing && <RefreshCw size={19} />}</Button><Button className="device-avatar" onClick={() => setPage('settings')} aria-label="Cihaz ayarlarını aç"><Laptop size={20} /></Button></div></header>
       <div className="global-notices" aria-live="polite">
         {!online && <Notice>Çevrimdışısınız. Mesajınız bu oturumun taslağında kalır; bağlantı gelince kendiliğinden gönderilmez.</Notice>}
         {online && !synced && snapshot && <Notice>Güncel durum henüz doğrulanamadı. Mesaj ve karar gönderimi eşitleme tamamlanana kadar kapalı.</Notice>}
@@ -205,8 +227,8 @@ export function App() {
         {notice && <div className="dismissible"><Notice tone="success">{notice}</Notice><Button className="icon-button subtle" aria-label="Bildirimi kapat" onClick={() => setNotice('')}><X size={17} /></Button></div>}
       </div>
       {!snapshot ? <div className="loading-content"><LoaderCircle className="spinner" size={25} /><h1>Çalışma alanınız yükleniyor</h1><p>Projeler ve oturumlar sunucudan alınıyor.</p></div> : <>
-        {page === 'sessions' && <section className={`sessions-view ${selected ? 'has-selection' : ''}`}>
-          <div className="session-list"><div className="page-heading"><div><p className="eyebrow">ÇALIŞMA ALANI</p><h1>Oturumlar <span className="heading-count">{snapshot.sessions.length}</span></h1></div><Button className="primary icon-button" onClick={() => setModal(snapshot.projects.length ? 'session' : 'project')} disabled={!canAct || !snapshot.remoteControlEnabled} aria-label={snapshot.projects.length ? 'Yeni oturum başlat' : 'İlk projeyi ekle'}><Plus size={22} /></Button></div>
+        {page === 'sessions' && <section className={`sessions-view ${selected ? 'has-selection' : ''} ${conversationOpen && (listHidden || focused) ? 'list-hidden' : ''}`}>
+          <div className="session-list" id="session-list"><div className="page-heading"><div><p className="eyebrow">ÇALIŞMA ALANI</p><h1>Oturumlar <span className="heading-count">{snapshot.sessions.length}</span></h1></div><Button className="primary icon-button" onClick={() => setModal(snapshot.projects.length ? 'session' : 'project')} disabled={!canAct || !snapshot.remoteControlEnabled} aria-label={snapshot.projects.length ? 'Yeni oturum başlat' : 'İlk projeyi ekle'}><Plus size={22} /></Button></div>
             <label className="search-field"><Search size={18} /><span className="sr-only">Oturumlarda ara</span><input value={filter} onChange={event => setFilter(event.target.value)} placeholder="Oturum veya proje ara" /></label>
             <div className="list-tools"><label><span className="sr-only">Proje filtresi</span><select value={projectFilter} onChange={event => setProjectFilter(event.target.value)}><option value="">Tüm projeler</option>{snapshot.projects.map(project => <option key={project.id} value={project.id}>{project.name}</option>)}</select></label><Button className="subtle compact" onClick={() => setModal('import')} disabled={!canAct}><Search size={16} />Mevcut oturumu bağla</Button></div>
             {filtered.length ? <div className="session-rows">{filtered.map(session => {
@@ -216,7 +238,7 @@ export function App() {
             })}</div> : <div className="empty-list"><MessageSquare size={30} /><h2>{snapshot.sessions.length ? 'Eşleşen oturum yok' : 'Henüz oturum yok'}</h2><p>{snapshot.sessions.length ? 'Arama metnini veya proje filtresini değiştirin.' : 'Bir projede yeni bir çalışma başlatın veya mevcut Claude oturumunuzu bağlayın.'}</p><Button className="primary" onClick={() => setModal(snapshot.projects.length ? 'session' : 'project')} disabled={!canAct || !snapshot.remoteControlEnabled}><Plus size={18} />{snapshot.projects.length ? 'Yeni oturum başlat' : 'İlk projeyi ekle'}</Button></div>}
             <div className="list-footer"><LockKeyhole size={14} />Oturum hedefleri her işlemde doğrulanır.</div>
           </div>
-          {selected && selectedProject ? <Conversation key={selected.id} session={selected} project={selectedProject} interactions={snapshot.interactions.filter(item => item.sessionId === selected.id)} cursor={snapshot.cursor} canAct={canAct && snapshot.remoteControlEnabled} onRefresh={refresh} onInteraction={setInteractionId} onBack={() => { setSelectedId(null); const url = new URL(location.href); url.searchParams.delete('session'); history.replaceState(null, '', url); }} /> : <div className="empty-detail"><div className="empty-detail-icon"><Terminal size={37} /></div><p className="eyebrow">İŞİNİZE YAKIN KALIN</p><h2>{selectedId ? 'Oturum bulunamadı' : 'Bir oturum seçin'}</h2><p>{selectedId ? 'Bu bağlantıdaki oturum artık erişilebilir değil. Listeden güncel bir oturum açın.' : 'Konuşmayı, bekleyen kararları ve doğrulanmış oturum bilgilerini burada takip edin.'}</p><div className="empty-detail-facts"><span><MessageSquare size={17} />Konuşma geçmişi</span><span><ShieldCheck size={17} />Kontrollü kararlar</span></div></div>}
+          {selected && selectedProject ? <Conversation key={selected.id} session={selected} project={selectedProject} interactions={snapshot.interactions.filter(item => item.sessionId === selected.id)} cursor={snapshot.cursor} canAct={canAct && snapshot.remoteControlEnabled} onRefresh={refresh} onInteraction={setInteractionId} focusMode={focused} onToggleFocus={() => setFocusMode(!focusMode)} listHidden={listHidden} onToggleList={() => setListHidden(!listHidden)} onBack={() => { setSelectedId(null); setFocusMode(false); const url = new URL(location.href); url.searchParams.delete('session'); history.replaceState(null, '', url); }} /> : <div className="empty-detail"><div className="empty-detail-icon"><Terminal size={37} /></div><p className="eyebrow">İŞİNİZE YAKIN KALIN</p><h2>{selectedId ? 'Oturum bulunamadı' : 'Bir oturum seçin'}</h2><p>{selectedId ? 'Bu bağlantıdaki oturum artık erişilebilir değil. Listeden güncel bir oturum açın.' : 'Konuşmayı, bekleyen kararları ve doğrulanmış oturum bilgilerini burada takip edin.'}</p><div className="empty-detail-facts"><span><MessageSquare size={17} />Konuşma geçmişi</span><span><ShieldCheck size={17} />Kontrollü kararlar</span></div></div>}
         </section>}
         {page === 'pending' && <main className="page-content"><div className="page-heading"><div><p className="eyebrow">SİZDEN YANIT BEKLİYOR</p><h1>Bekleyenler <span className="heading-count">{pending.length}</span></h1><p className="muted">Her kararı, ilgili proje ve isteğin içeriğiyle birlikte değerlendirin.</p></div></div>{pending.length ? <div className="pending-grid">{pending.map(item => {
           const session = snapshot.sessions.find(session => session.id === item.sessionId);

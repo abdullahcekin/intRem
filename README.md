@@ -12,6 +12,7 @@ Yeni bir oturumdan devam etmek için önce [güncel durum ve devam rehberini](do
 - Kalıcı mesaj kuyruğu, olay geçmişi ve tek kullanımlık insan kararları.
 - intRem'in yönettiği yeni Claude oturumları ve mevcut konuşmalardan kontrollü devir.
 - Mobil PWA, passkey girişi, cihaz iptali ve Web Push.
+- Konuşmaya odak modu, bağımsız gizlenebilir masaüstü panelleri ve mobilde görünür mesaj alanı. Odak modunda “Mesaj yaz” taslağı geri açar; ayrıntılar “Oturum bilgisi” penceresindedir.
 - Model ve hesap görünürlüğü; doğrulanmamış bilgi için açıkça `bilinmiyor` durumu.
 
 Terminale körlemesine metin gönderilmez. Aktif mevcut oturumlar kendiliğinden kapatılmaz. Belirsiz teslimat otomatik tekrarlanmaz. Araç izni ile plan kabulü ayrı tutulur.
