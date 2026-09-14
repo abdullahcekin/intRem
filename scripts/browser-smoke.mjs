@@ -58,17 +58,18 @@ const assertConversationPanels = async page => {
   const conversation = page.locator('.conversation');
   const originalWidth = (await conversation.boundingBox()).width;
   for (const [hide, show, panel, other] of [
-    ['Ana gezinmeyi gizle', 'Ana gezinmeyi göster', sidebar, list],
-    ['Oturum listesini gizle', 'Oturum listesini göster', list, sidebar],
+    ['Menüyü gizle', 'Menüyü aç', sidebar, list],
+    ['Listeyi gizle', 'Listeyi aç', list, sidebar],
   ]) {
     await page.getByRole('button', { name: hide, exact: true }).click();
     assert.equal(await panel.isVisible(), false, hide);
+    assert.equal(await page.getByRole('button', { name: show, exact: true }).innerText(), show, 'closed panels retain a visible labeled reopen control');
     assert.equal(await other.isVisible(), true, 'other panel remains independently available');
     assert.ok((await conversation.boundingBox()).width > originalWidth + 150, `${hide} expands the reading area`);
     await page.getByRole('button', { name: show, exact: true }).click();
     assert.equal(await panel.isVisible(), true, show);
   }
-  await page.getByRole('button', { name: 'Ana gezinmeyi gizle', exact: true }).click();
+  await page.getByRole('button', { name: 'Menüyü gizle', exact: true }).click();
   const composer = page.getByLabel('Bu oturuma mesaj', { exact: true });
   await composer.fill('Odak değişse de bu taslak korunmalı.');
   await page.getByRole('button', { name: 'Odak modunu aç', exact: true }).focus();
@@ -92,7 +93,7 @@ const assertConversationPanels = async page => {
   assert.equal(await page.locator('.topbar').isVisible(), true);
   assert.equal(await composer.inputValue(), 'Odak değişse de bu taslak korunmalı.');
   await composer.fill('');
-  await page.getByRole('button', { name: 'Ana gezinmeyi göster', exact: true }).click();
+  await page.getByRole('button', { name: 'Menüyü aç', exact: true }).click();
 };
 try {
   await app.listen({ host: config.host, port: config.port });

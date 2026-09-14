@@ -165,6 +165,9 @@ body{font-size:16px}
 /* Conversation chrome has a bounded height; only the transcript consumes the remaining space. */
 .app-layout.navigation-hidden{grid-template-columns:minmax(0,1fr)}
 .navigation-hidden>.sidebar{display:none}
+.panel-toggle{font-size:13px;padding:8px 10px;flex-shrink:0}
+.panel-toggle[aria-expanded=false]{background:var(--info-bg);border-color:var(--primary);color:var(--primary)}
+@media(min-width:1001px) and (max-width:1300px){.breadcrumb-context{display:none}}
 .main-area{min-height:0}
 .global-notices:empty{display:none}
 .global-notices{flex-shrink:0;max-height:25%;overflow:auto}

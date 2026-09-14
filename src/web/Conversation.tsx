@@ -118,7 +118,7 @@ export function Conversation({ session, project, interactions, cursor, canAct, o
   return <article className={`conversation ${focusMode ? 'is-focused' : ''} ${focusMode && !focusWriting ? 'reading-only' : ''}`} aria-label={`${project.name} konuşması`}>
     <header className="conversation-heading"><div className="conversation-title">
       <Button className="icon-button subtle mobile-back" onClick={onBack} aria-label="Oturum listesine dön"><ArrowLeft size={22} /></Button>
-      <Button className="icon-button subtle list-toggle" onClick={onToggleList} aria-label={listHidden ? 'Oturum listesini göster' : 'Oturum listesini gizle'} title={listHidden ? 'Oturum listesini göster' : 'Oturum listesini gizle'} aria-controls="session-list" aria-expanded={!listHidden}>{listHidden ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}</Button>
+      <Button className="panel-toggle list-toggle" onClick={onToggleList} title="Oturum listesi" aria-controls="session-list" aria-expanded={!listHidden}>{listHidden ? <PanelLeftOpen size={20} /> : <PanelLeftClose size={20} />}<span>{listHidden ? 'Listeyi aç' : 'Listeyi gizle'}</span></Button>
       <div className="conversation-caption"><span className="project-name" title={project.name}>{project.name}</span><h2 title={session.title}>{session.title}</h2></div>
       <StatusBadge state={session.state} />
       <div className="conversation-controls">
