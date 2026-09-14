@@ -81,6 +81,7 @@ try {
     ownerId = auth.ownerId;
     const project = seeded.createProject({ name: 'Yedek kabul projesi', cwd: root, host: 'fixture' });
     session = seeded.createSession({ projectId: project.id, title: 'Geri yüklenen konuşma' });
+    seeded.recordSessionCost(session.id, session.generation, 0.0125);
     seeded.appendMessage(session.id, 'assistant', 'Yedekte korunması gereken yanıt.');
     assert.equal(auth.verifyBootstrap(bootstrap), false, 'tüketilen kurulum kodu');
   } finally { seeded.close(); }
@@ -100,7 +101,7 @@ try {
   await page.goto(origin);
   await page.getByRole('button', { name: 'Passkey ile giriş yap', exact: true }).click();
   await page.getByText('Giriş doğrulanamadı. Yeniden deneyin.', { exact: true }).waitFor();
-  assert.equal((await fetch(`${origin}/api/snapshot`)).status, 401);
+  assert.equal(await page.evaluate(async () => (await fetch('/api/snapshot')).status), 401);
   assert.equal(await page.getByRole('navigation', { name: 'Ana gezinme' }).count(), 0, 'bozuk anahtar ile erişim reddedilir');
   await page.goto('about:blank');
   await stop();
@@ -122,13 +123,14 @@ try {
     assert.equal(restoredAuth.verifyBootstrap(bootstrap), false);
     assert.equal(verification.listSessions().length, 1);
     assert.equal(verification.listMessages(session.id).length, 1, 'geri yükleme mesajı tekrar göndermez');
+    assert.equal(verification.getSession(session.id).costEstimate.costUsd, 0.0125, 'son SDK maliyet tahmini yedekte korunur');
   } finally { verification.close(); }
   const outputDir = path.resolve('output/playwright');
   mkdirSync(outputDir, { recursive: true });
   await page.screenshot({ path: path.join(outputDir, 'restore-passkey-mobile.png') });
   await page.goto('about:blank');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, checks: ['all-table-backup-integrity', 'damaged-credential-rejected', 'fresh-process-passkey-login', 'credential-counter-advanced', 'consumed-bootstrap-stays-invalid', 'restored-conversation-no-resend'], tables: Object.keys(expected).length }));
+  console.log(JSON.stringify({ ok: true, checks: ['all-table-backup-integrity', 'damaged-credential-rejected', 'fresh-process-passkey-login', 'credential-counter-advanced', 'consumed-bootstrap-stays-invalid', 'restored-conversation-no-resend', 'restored-cost-estimate'], tables: Object.keys(expected).length }));
 } finally {
   await browser?.close();
   await stop();

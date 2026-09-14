@@ -91,6 +91,38 @@ try {
   await page.getByRole('button', { name: 'Oturumu oluştur' }).click();
   await waitFor(() => store.listSessions().length === 1, 'oturum');
   const session = store.listSessions()[0];
+  await page.getByRole('button', { name: 'Oturum bilgisi', exact: true }).click();
+  const costInfo = page.getByText('Son SDK maliyet tahmini', { exact: true }).locator('..');
+  await costInfo.getByText('Bilinmiyor', { exact: true }).waitFor({ timeout: 5000 });
+  await costInfo.getByText('Henüz sonuç ölçümü yok.', { exact: true }).waitFor();
+  store.recordSessionCost(session.id, session.generation, 0);
+  await costInfo.getByText('0,00 USD', { exact: true }).waitFor();
+  store.recordSessionCost(session.id, session.generation, 1.234567);
+  await costInfo.getByText('1,234567 USD', { exact: true }).waitFor();
+  const costObservedAt = store.getSession(session.id).costEstimate.observedAt;
+  assert.equal(await costInfo.locator('time').getAttribute('datetime'), costObservedAt);
+  await costInfo.getByText(/Toplam fatura veya bütçe sınırı değildir/).waitFor();
+  for (const width of [320, 375]) {
+    await page.setViewportSize({ width, height: 812 });
+    await costInfo.scrollIntoViewIfNeeded();
+    assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `cost estimate overflow ${width}`);
+    const costBounds = await costInfo.boundingBox();
+    assert.ok(costBounds && costBounds.y >= 0 && costBounds.y + costBounds.height <= 812, `cost estimate reachable ${width}`);
+    await page.screenshot({ path: path.join(output, `cost-estimate-${width}.png`) });
+  }
+  await page.reload();
+  await page.getByRole('button', { name: 'Oturum bilgisi', exact: true }).click();
+  await costInfo.getByText('1,234567 USD', { exact: true }).waitFor();
+  assert.equal(await costInfo.locator('time').getAttribute('datetime'), costObservedAt, 'reload preserves the cost observation');
+  store.recordSessionCost(session.id, session.generation, 0.000000001);
+  await costInfo.getByText('< 0,000001 USD', { exact: true }).waitFor();
+  assert.equal(await costInfo.getByText('0,00 USD', { exact: true }).count(), 0, 'a positive estimate never rounds to zero');
+  store.recordSessionCost(session.id, session.generation, null);
+  await costInfo.getByText('Bilinmiyor', { exact: true }).waitFor();
+  assert.equal(await costInfo.locator('time').getAttribute('datetime'), store.getSession(session.id).costEstimate.observedAt);
+  assert.equal(await costInfo.getByText('Henüz sonuç ölçümü yok.', { exact: true }).count(), 0, 'unusable result still has an observation time');
+  await page.getByRole('button', { name: 'Oturum bilgisi', exact: true }).click();
+  await page.setViewportSize({ width: 1440, height: 960 });
   const sentIds = [];
   let drop = true;
   await page.route('**/api/sessions/*/messages', async route => {
@@ -295,7 +327,7 @@ try {
   abort.abort();
   await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer', 'provider-failure-mobile-reload', 'gateway-setup-mobile-counts-and-access', 'PWA-offline-reload-and-cache-boundary'], screenshots: output }));
+  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer', 'provider-failure-mobile-reload', 'gateway-setup-mobile-counts-and-access', 'PWA-offline-reload-and-cache-boundary', 'cost-estimate-states-mobile-reload'], screenshots: output }));
 } finally {
   await browser?.close();
   await app.close(); store.close();

@@ -21,6 +21,16 @@ async function fixture() {
 }
 afterEach(async () => { vi.unstubAllGlobals(); for (const done of cleanup.splice(0)) await done(); });
 describe('HTTP security and command targeting', () => {
+  it('exposes only the persisted cost snapshot to an authenticated session', async () => {
+    const { app, store, headers, dir } = await fixture();
+    const project = store.createProject({ name: 'Cost fixture', cwd: dir, host: 'localhost' });
+    const session = store.createSession({ projectId: project.id });
+    store.recordSessionCost(session.id, session.generation, 0.0125);
+    expect((await app.inject('/api/snapshot')).statusCode).toBe(401);
+    const response = await app.inject({ url: '/api/snapshot', headers });
+    expect(response.statusCode).toBe(200);
+    expect(response.json().sessions.find((row: { id: string }) => row.id === session.id).costEstimate).toEqual({ costUsd: 0.0125, observedAt: expect.any(String) });
+  });
   it('keeps gateway inventory behind authentication and Origin checks', async () => {
     const { app, headers } = await fixture();
     const fetchGateway = vi.fn();

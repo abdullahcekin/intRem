@@ -72,6 +72,14 @@ Kurulu OmniRoute 3.8.50 kaynak sözleşmesi: `src/app/api/providers/route.ts`, `
 
 Bu alanlar kurulum envanteridir; çalışan hesap, kota, ayrı model havuzlarının doğruluğu, gerçek istek hesabı/modeli ve harcama garantisi sayılmaz. Token kurulumu için [dağıtım rehberine](deployment.md#omniroute-kurulum-görünürlüğü) bakın. Pozitif sayı simülasyonları ve canlı yetkisiz yanıt kontrolü, gerçek hesap bağlantısı kabulünden ayrı raporlanır.
 
+## Son SDK maliyet tahmini
+
+`Session.costEstimate`, son sonuç gözlemini `{costUsd: number | null, observedAt: string}` olarak taşır; henüz sonuç gözlenmediyse `null` olur. `session_cost_estimates` tablosu oturum başına tek kaydı tutar; önceki veritabanlarına veri silmeden eklenir. `Store.recordSessionCost(id, generation, costUsd)` güncel nesli transaction içinde doğrular, snapshot'ı değiştirir ve mevcut `session.updated` akışına verir. Liste/snapshot ve yeniden açılış aynı gözlemi kullanır; yeni API veya maliyet yazma yetkisi eklenmez.
+
+Kurulu Claude Agent SDK'nin `SDKResultSuccess` / `SDKResultError` sözleşmesinde `total_cost_usd` aynı `query()` boyunca birikimli tahmindir. Resume yeni sayaç başlatır; `/clear` aynı query içinde sıfırlayabilir; başlangıç/çökme hataları sıfır taşıyabilir. Sonuçlar toplanmaz. Yalnız başarılı sonuçtaki sonlu, negatif olmayan sayı kabul edilir; eksik, bozuk veya hata sonucunda maliyet `null` olur. Daha küçük sonraki değer ve başarılı sıfır geçerlidir. Tamamlanmamış turda son gözlem zamanıyla korunur; geçmiş ya da eksik çağrılar için tutar uydurulmaz. Ham sonuç/hesap/token bilgisi kaydedilmez.
+
+Oturum bilgisi son USD tahminini, bildirim zamanını ve çalışma dönemi sınırını gösterir. Çok küçük pozitif değer sıfır gösterilmez. Bu alan toplam oturum/proje harcaması, sağlayıcı faturası, gerçek gateway hesabı veya sert bütçe garantisi değildir; ücretli fallback'i açmaz.
+
 ## Doğrulama sırası
 
 1. Atomik karar, generation, idempotency ve restart testleri yazılıp beklenen başarısızlık görülür; sonra store uygulanır.
@@ -79,5 +87,5 @@ Bu alanlar kurulum envanteridir; çalışan hesap, kota, ayrı model havuzların
 3. Runner/discovery testleri sahte süreç adaptörü ve geçici dosyalarla gerçek karar/teslim durumlarını sınar; simülasyon canlı Claude doğrulamasından ayrı raporlanır.
 4. UI build ve Playwright kullanıcı akışları; geniş/dar ekranda görüntü incelemesi.
 5. Ayrı Ubuntu pilotunda gerçek CLI gidiş/dönüşü, API restart ve kontrollü devir; mevcut çalışma oturumlarına müdahale yok.
-6. `npm run test:restore`: yalnız geçici verilerle API süreci durdurulur; veri dizini ayrı konuma kopyalanır, bütün uygulama tabloları karşılaştırılır. Bozuk public key içeren kontrol yedeğinde giriş reddedilir; sağlam yedek yeni API sürecinde aynı sanal passkey ile giriş, sayaç ilerlemesi, konuşma ve tüketilmiş bootstrap korunmasıyla doğrulanır. Fiziksel cihaz kabulünün yerine geçmez.
+6. `npm run test:restore`: yalnız geçici verilerle API süreci durdurulur; veri dizini ayrı konuma kopyalanır, bütün uygulama tabloları karşılaştırılır. Bozuk public key içeren kontrol yedeğinde giriş reddedilir ve aynı tarayıcının çerezleriyle korumalı API 401 döner; sağlam yedek yeni API sürecinde aynı sanal passkey ile giriş, sayaç ilerlemesi, konuşma, maliyet tahmini ve tüketilmiş bootstrap korunmasıyla doğrulanır. Fiziksel cihaz kabulünün yerine geçmez.
 7. Tarayıcı kontrolü service worker denetimini, shell/asset önbelleğini, API/sağlık verisinin önbelleğe alınmamasını, çevrimdışı reload/rehber açılışını ve bağlantıdan sonra yeniden doğrulamayı kapsar. Tarayıcının çevrimiçi bildirimi sunucu erişimi kanıtı sayılmaz; açılışta ağ hatası ayrıca gösterilir.

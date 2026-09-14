@@ -12,6 +12,7 @@ export interface Session {
   requestedModel: string | null; actualModel: string | null; account: string | null;
   fallbackReason: string | null; controlEnabled: boolean;
   createdAt: string; updatedAt: string; lastActivityAt: string | null;
+  costEstimate: { costUsd: number | null; observedAt: string } | null;
 }
 export interface Message {
   id: string; sessionId: string; clientId: string | null; role: 'user' | 'assistant' | 'system';

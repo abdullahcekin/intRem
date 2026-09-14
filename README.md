@@ -50,6 +50,7 @@ Rehber ve çalışma ekranı telefon, tablet ve masaüstüne uyarlanır. Tarayı
 | Web Push ve proje/cihaz tercihleri | Uygulanmış; gerçek telefon teslimi bekliyor |
 | OmniRoute | Sağlık, salt okunur hesap bağlantısı/havuz/eşleme sayısı ve erişim durumu görünür; gerçek yönlendirme ve bütçeli fallback açık iş |
 | Sağlayıcı hata açıklamaları | SDK hata türüne göre mesaj altında neden ve sonraki adım; yalnız bildirilen kota penceresi/UTC zamanı; bilinmeyen hata veya limit türü tahmin edilmez |
+| Maliyet görünürlüğü | Son başarılı SDK sonucundaki USD tahmini ve bildirim zamanı kalıcıdır; eksik/hatalı sonuç bilinmiyor, sonuçlar toplanmaz; fatura veya bütçe sınırı değildir |
 | Codex | Kalıcı inceleme kuyruğu, salt okunur çalıştırma, iptal ve değişen kod kontrolü uygulandı; gerçek VDS CLI pilotu geçti |
 
 Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin mesajını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Kaynak zaman damgaları SDK tarafından verilmediğinden aktarılan mesajların zamanı aktarım anıdır. Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Plan içeriği CLI'nin `PreToolUse` hook girdisinden mevcut insan kararına aktarılır; hook kendiliğinden onay vermez. İçerik elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.

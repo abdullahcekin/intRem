@@ -35,7 +35,11 @@ function canonical(value: unknown, seen = new Set<object>()): string {
 }
 
 function projectRow(row: Row): Project { return { ...row, pushEnabled: !!row.pushEnabled } as unknown as Project; }
-function sessionRow(row: Row): Session { return { ...row, controlEnabled: !!row.controlEnabled } as unknown as Session; }
+function sessionRow(row: Row): Session {
+  const { costUsd, costObservedAt, ...session } = row;
+  return { ...session, controlEnabled: !!session.controlEnabled, costEstimate: costObservedAt ? { costUsd, observedAt: costObservedAt } : null } as unknown as Session;
+}
+const sessionQuery = 'SELECT sessions.*, estimate.costUsd, estimate.observedAt AS costObservedAt FROM sessions LEFT JOIN session_cost_estimates estimate ON estimate.sessionId = sessions.id';
 function messageRow(row: Row): Message {
   const { generation: _generation, ...message } = row;
   return message as unknown as Message;
@@ -70,6 +74,9 @@ export class Store {
         requestedModel TEXT, actualModel TEXT, account TEXT, fallbackReason TEXT,
         controlEnabled INTEGER NOT NULL CHECK(controlEnabled IN (0,1)),
         createdAt TEXT NOT NULL, updatedAt TEXT NOT NULL, lastActivityAt TEXT
+      );
+      CREATE TABLE IF NOT EXISTS session_cost_estimates (
+        sessionId TEXT PRIMARY KEY REFERENCES sessions(id), costUsd REAL CHECK(costUsd IS NULL OR costUsd >= 0), observedAt TEXT NOT NULL
       );
       CREATE TABLE IF NOT EXISTS messages (
         id TEXT PRIMARY KEY, sessionId TEXT NOT NULL REFERENCES sessions(id), clientId TEXT,
@@ -211,9 +218,9 @@ export class Store {
     });
   }
 
-  listSessions(): Session[] { return this.db.prepare('SELECT * FROM sessions ORDER BY rowid').all().map(sessionRow); }
+  listSessions(): Session[] { return this.db.prepare(`${sessionQuery} ORDER BY sessions.rowid`).all().map(sessionRow); }
   getSession(id: string): Session | undefined {
-    const row = this.db.prepare('SELECT * FROM sessions WHERE id = ?').get(id);
+    const row = this.db.prepare(`${sessionQuery} WHERE sessions.id = ?`).get(id);
     return row ? sessionRow(row) : undefined;
   }
   createSession(input: NewSession): Session {
@@ -226,14 +233,28 @@ export class Store {
     return this.transaction(() => {
       if (!this.getProject(input.projectId)) throw new AppError(404, 'PROJECT_NOT_FOUND', 'Proje bulunamadı.');
       const stamp = now();
-      const session: Session = { id: randomUUID(), projectId: input.projectId, title: input.title ?? 'Yeni oturum', source, state: source === 'managed' ? 'idle' : 'offline', generation: randomUUID(), claudeSessionId: input.claudeSessionId ?? null, sourcePid: input.sourcePid ?? null, sourceStart: input.sourceStart ?? null, tmuxPane: input.tmuxPane ?? null, requestedModel: null, actualModel: null, account: null, fallbackReason: null, controlEnabled: source === 'managed', createdAt: stamp, updatedAt: stamp, lastActivityAt: null };
+      const session: Omit<Session, 'costEstimate'> = { id: randomUUID(), projectId: input.projectId, title: input.title ?? 'Yeni oturum', source, state: source === 'managed' ? 'idle' : 'offline', generation: randomUUID(), claudeSessionId: input.claudeSessionId ?? null, sourcePid: input.sourcePid ?? null, sourceStart: input.sourceStart ?? null, tmuxPane: input.tmuxPane ?? null, requestedModel: null, actualModel: null, account: null, fallbackReason: null, controlEnabled: source === 'managed', createdAt: stamp, updatedAt: stamp, lastActivityAt: null };
       this.db.prepare(`INSERT INTO sessions (${Object.keys(session).join(',')}) VALUES (${Object.keys(session).map(() => '?').join(',')})`).run(...Object.values(session).map(value => typeof value === 'boolean' ? Number(value) : value));
-      this.event('session.created', session.id, { session });
-      return session;
+      const created = this.requiredSession(session.id);
+      this.event('session.created', session.id, { session: created });
+      return created;
     });
   }
 
-  updateSession(id: string, patch: Partial<Session>): Session {
+  recordSessionCost(id: string, generation: string, costUsd: number | null): void {
+    if (costUsd !== null && (typeof costUsd !== 'number' || !Number.isFinite(costUsd) || costUsd < 0)) throw new AppError(400, 'INVALID_COST', 'Maliyet tahmini geçersiz.');
+    this.transaction(() => {
+      const current = this.requiredSession(id);
+      if (current.generation !== generation) conflict('STALE_GENERATION', 'Oturum nesli değişti.');
+      const stamp = now();
+      // SDK totals are cumulative and can reset; replace the last observation, never sum them.
+      this.db.prepare('INSERT INTO session_cost_estimates (sessionId,costUsd,observedAt) VALUES (?,?,?) ON CONFLICT(sessionId) DO UPDATE SET costUsd=excluded.costUsd, observedAt=excluded.observedAt').run(id, costUsd, stamp);
+      this.db.prepare('UPDATE sessions SET updatedAt = ? WHERE id = ?').run(stamp, id);
+      this.event('session.updated', id, { session: this.requiredSession(id) });
+    });
+  }
+
+  updateSession(id: string, patch: Partial<Omit<Session, 'costEstimate'>>): Session {
     const strings = ['title', 'generation'];
     const nullableStrings = ['claudeSessionId', 'sourceStart', 'tmuxPane', 'requestedModel', 'actualModel', 'account', 'fallbackReason', 'lastActivityAt'];
     for (const [key, value] of Object.entries(patch)) {

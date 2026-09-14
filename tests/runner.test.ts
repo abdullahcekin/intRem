@@ -53,6 +53,53 @@ describe('SDK runner kalıcı kuyruk ve callback yaşam döngüsü', () => {
   });
   afterEach(async () => { await runner.stop(); store.close(); await rm(directory, { recursive: true, force: true }); });
   const enqueue = (text = 'Merhaba') => store.enqueueMessage(sessionId, { clientId: crypto.randomUUID(), text, generation: store.getSession(sessionId)!.generation });
+
+  it('SDK maliyet snapshotını toplamaz; tekrar, sayaç sıfırlaması ve yeni süreçte son değeri gösterir', async () => {
+    expect(store.getSession(sessionId)!.costEstimate).toBeNull();
+    const complete = async (cost: number) => {
+      const message = enqueue(); await runner.tick();
+      await until(() => query.inputs.some(input => input.uuid === message.id));
+      const result = { type: 'result', subtype: 'success', is_error: false, session_id: 'sdk-cost-session', result: 'Tamam', total_cost_usd: cost };
+      query.emit(result);
+      await until(() => store.listMessages(sessionId).find(row => row.id === message.id)?.state === 'completed');
+      query.emit(result);
+      await new Promise(resolve => setTimeout(resolve, 10));
+      expect(store.getSession(sessionId)!.costEstimate).toMatchObject({ costUsd: cost, observedAt: expect.any(String) });
+    };
+    await complete(0.25);
+    await complete(0.4);
+    await complete(0);
+    expect(launches).toBe(1);
+    query.close();
+    await new Promise(resolve => setTimeout(resolve, 10));
+    await complete(0.03);
+    expect(launches).toBe(2);
+    expect(query.options.resume).toBe('sdk-cost-session');
+    const reopened = new Store(path.join(directory, 'intrem.db'));
+    try { expect(reopened.getSession(sessionId)!.costEstimate?.costUsd).toBe(0.03); }
+    finally { reopened.close(); }
+  });
+
+  it.each([undefined, null, -1, NaN, Infinity, '0.25'])('geçersiz SDK maliyetini sıfır veya önceki tutar diye göstermez: %s', async cost => {
+    const first = enqueue(); await runner.tick();
+    await until(() => query.inputs.length === 1);
+    query.emit({ type: 'result', subtype: 'success', is_error: false, session_id: 'sdk-cost-session', result: 'Tamam', total_cost_usd: 0.2 });
+    await until(() => store.listMessages(sessionId).find(row => row.id === first.id)?.state === 'completed');
+    const second = enqueue(); await runner.tick();
+    await until(() => query.inputs.length === 2);
+    query.emit({ type: 'result', subtype: 'success', is_error: false, session_id: 'sdk-cost-session', result: 'Tamam', total_cost_usd: cost });
+    await until(() => store.listMessages(sessionId).find(row => row.id === second.id)?.state === 'completed');
+    expect(store.getSession(sessionId)!.costEstimate).toMatchObject({ costUsd: null, observedAt: expect.any(String) });
+  });
+
+  it('hata sonucundaki sıfır maliyeti ücretsiz çalışma diye sunmaz', async () => {
+    const message = enqueue(); await runner.tick();
+    await until(() => query.inputs.length === 1);
+    query.emit({ type: 'result', subtype: 'error_during_execution', is_error: true, session_id: 'sdk-cost-session', errors: ['PRIVATE_COST_ERROR'], total_cost_usd: 0 });
+    await until(() => store.listMessages(sessionId).find(row => row.id === message.id)?.state === 'failed');
+    expect(store.getSession(sessionId)!.costEstimate).toMatchObject({ costUsd: null, observedAt: expect.any(String) });
+    expect(JSON.stringify(store.eventsAfter(0))).not.toContain('PRIVATE_COST_ERROR');
+  });
   const tool = (name: string, input: Record<string, unknown>, signal = new AbortController().signal) => query.options.canUseTool!(name, input, { signal, requestId: crypto.randomUUID(), toolUseID: crypto.randomUUID() });
 
   it('boş oturum başlatmaz, mesajı kalıcı claim sonrası bir kez teslim eder, cevabı saklar', async () => {

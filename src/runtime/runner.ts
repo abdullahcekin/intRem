@@ -218,6 +218,8 @@ export class Runner {
           const text = event.message.content.filter(block => block.type === 'text').map(block => block.text).join('\n');
           if (text) { this.store.appendMessage(runtime.id, 'assistant', text); runtime.answerReceived = true; }
         } else if (event.type === 'result' && runtime.currentMessage) {
+          const cost = event.total_cost_usd;
+          this.store.recordSessionCost(runtime.id, runtime.generation, !event.is_error && event.subtype === 'success' && typeof cost === 'number' && Number.isFinite(cost) && cost >= 0 ? cost : null);
           this.store.expireSessionInteractions(runtime.id, runtime.generation);
           if (!runtime.answerReceived && !event.is_error && event.subtype === 'success' && event.result) this.store.appendMessage(runtime.id, 'assistant', event.result);
           this.store.updateMessage(runtime.currentMessage.id, { state: event.is_error ? 'failed' : 'completed', error: event.is_error ? providerFailureText(event.subtype, runtime.failureError, runtime.rateLimit) : null });

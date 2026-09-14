@@ -30,6 +30,41 @@ function permission(store: Store, session: ReturnType<Store['createSession']>, i
   return store.createInteraction({ sessionId: session.id, generation: session.generation, requestId: 'request-1', kind: 'permission', toolName: 'Bash', input, expiresAt: new Date(Date.now() + 60_000).toISOString() });
 }
 
+describe('son SDK maliyet tahmini', () => {
+  it('önceki şemadaki oturumu veri kaybetmeden bilinmeyen maliyetle açar', () => {
+    const { store, session, path } = fixture();
+    store.appendMessage(session.id, 'assistant', 'Korunan yanıt');
+    store.db.exec('DROP TABLE session_cost_estimates');
+    const migrated = new Store(path); stores.push(migrated);
+    expect(migrated.getSession(session.id)!.costEstimate).toBeNull();
+    expect(migrated.listMessages(session.id)[0].text).toBe('Korunan yanıt');
+    migrated.recordSessionCost(session.id, session.generation, 0.5);
+    expect(store.getSession(session.id)!.costEstimate?.costUsd).toBe(0.5);
+  });
+  it('son gözlemi listede, bağımsız bağlantıda ve session.updated olayında korur', () => {
+    const { store, session, path } = fixture();
+    store.recordSessionCost(session.id, session.generation, 0.5);
+    store.recordSessionCost(session.id, session.generation, 0.75);
+    const reopened = new Store(path); stores.push(reopened);
+    const estimate = reopened.getSession(session.id)!.costEstimate;
+    expect(estimate).toEqual({ costUsd: 0.75, observedAt: expect.any(String) });
+    expect(reopened.listSessions()[0].costEstimate).toEqual(estimate);
+    expect(store.eventsAfter(0).filter(event => event.type === 'session.updated').at(-1)?.data.session).toMatchObject({ costEstimate: estimate });
+    store.recordSessionCost(session.id, session.generation, null);
+    expect(reopened.getSession(session.id)!.costEstimate?.costUsd).toBeNull();
+  });
+
+  it('eski neslin tahmini yeni nesle yazmasını ve geçersiz tutarı reddeder', () => {
+    const { store, session } = fixture();
+    store.recordSessionCost(session.id, session.generation, 0);
+    store.updateSession(session.id, { generation: 'new-generation' });
+    expect(() => store.recordSessionCost(session.id, session.generation, 99)).toThrow();
+    expect(() => store.recordSessionCost(session.id, 'new-generation', -1)).toThrow();
+    expect(() => store.recordSessionCost(session.id, 'new-generation', Infinity)).toThrow();
+    expect(store.getSession(session.id)!.costEstimate?.costUsd).toBe(0);
+  });
+});
+
 afterEach(() => {
   vi.useRealTimers();
   vi.restoreAllMocks();
