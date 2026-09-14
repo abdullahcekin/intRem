@@ -23,7 +23,7 @@ async function readJson(response: Response): Promise<unknown> {
   }
 }
 
-async function readCount(origin: string, token: string | undefined, resource: 'providers' | 'combos'): Promise<OmniRouteCount> {
+async function readCount(origin: string, token: string | undefined, resource: 'providers' | 'combos' | 'model-combo-mappings'): Promise<OmniRouteCount> {
   try {
     const response = await fetch(new URL(`/api/${resource}?limit=1`, origin), {
       method: 'GET', redirect: 'error', signal: AbortSignal.timeout(5000),
@@ -38,7 +38,7 @@ async function readCount(origin: string, token: string | undefined, resource: 'p
     const payload = await readJson(response);
     if (!payload || typeof payload !== 'object' || Array.isArray(payload)) return unavailable();
     const { total } = payload as Record<string, unknown>;
-    const rows = (payload as Record<string, unknown>)[resource === 'providers' ? 'connections' : 'combos'];
+    const rows = (payload as Record<string, unknown>)[{ providers: 'connections', combos: 'combos', 'model-combo-mappings': 'mappings' }[resource]];
     // limit=1 makes an empty page evidence for zero only when the total agrees.
     if (typeof total !== 'number' || !Number.isSafeInteger(total) || total < 0 || !Array.isArray(rows)
       || rows.length !== Math.min(total, 1) || !rows.every(row => row && typeof row === 'object' && !Array.isArray(row))) return unavailable();
@@ -47,8 +47,8 @@ async function readCount(origin: string, token: string | undefined, resource: 'p
 }
 
 export async function readOmniRouteSetup(config: Pick<AppConfig, 'omnirouteUrl' | 'omnirouteToken'>): Promise<OmniRouteSetup> {
-  const [connections, pools] = config.omnirouteUrl
-    ? await Promise.all([readCount(config.omnirouteUrl, config.omnirouteToken, 'providers'), readCount(config.omnirouteUrl, config.omnirouteToken, 'combos')])
-    : [{ state: 'not_configured' as const, count: null }, { state: 'not_configured' as const, count: null }];
-  return { checkedAt: new Date(Date.now()).toISOString(), connections, pools };
+  const [connections, pools, mappings] = config.omnirouteUrl
+    ? await Promise.all([readCount(config.omnirouteUrl, config.omnirouteToken, 'providers'), readCount(config.omnirouteUrl, config.omnirouteToken, 'combos'), readCount(config.omnirouteUrl, config.omnirouteToken, 'model-combo-mappings')])
+    : [{ state: 'not_configured' as const, count: null }, { state: 'not_configured' as const, count: null }, { state: 'not_configured' as const, count: null }];
+  return { checkedAt: new Date(Date.now()).toISOString(), connections, pools, mappings };
 }

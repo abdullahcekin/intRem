@@ -209,14 +209,47 @@ try {
   await waitFor(() => store.listProjects()[0].pushEnabled, 'proje bildirimi');
   await page.getByRole('heading', { name: 'Proje profilleri' }).scrollIntoViewIfNeeded();
   await page.screenshot({ path: path.join(output, 'settings-mobile.png') });
+  await page.evaluate(() => navigator.serviceWorker.ready);
+  await waitFor(() => page.evaluate(() => !!navigator.serviceWorker.controller), 'service worker denetimi');
+  const cachePaths = await page.evaluate(async () => {
+    const cachesForApp = (await caches.keys()).filter(key => key.startsWith('intrem-shell-'));
+    return (await Promise.all(cachesForApp.map(async key => (await (await caches.open(key)).keys()).map(request => new URL(request.url).pathname)))).flat();
+  });
+  assert.ok(cachePaths.includes('/') && cachePaths.some(p => p.startsWith('/assets/')), 'shell and built assets cached');
+  assert.equal(cachePaths.some(p => p.startsWith('/api') || p === '/health'), false, 'private APIs and health never cached');
+  const messagesBeforeOffline = store.listMessages(session.id).length;
   await context.setOffline(true);
   await waitFor(async () => (await page.getByText('Çevrimdışı', { exact: false }).count()) > 0, 'çevrimdışı');
   assert.equal(await page.getByLabel('Proje bildirimleri').isDisabled(), true);
+  await page.reload({ waitUntil: 'domcontentloaded' });
+  await page.getByText(/Çevrimdışısınız\.|Sunucuya ulaşılamadı\./).waitFor({ timeout: 5000 });
+  await page.getByRole('link', { name: 'Kullanım rehberi', exact: true }).waitFor();
+  await page.screenshot({ path: path.join(output, 'offline-reload-mobile.png') });
+  assert.equal(await page.getByText('Pilot uygulama', { exact: true }).count(), 0, 'private snapshot is not served from the shell cache');
+  assert.equal(await page.getByLabel('Kurulum anahtarı').count(), 0, 'offline reload does not claim initial setup is needed');
+  assert.equal(await page.evaluate(async () => {
+    try { await fetch('/api/snapshot'); return true; } catch { return false; }
+  }), false, 'snapshot does not fall back to cached data');
   await context.setOffline(false);
+  const retryConnection = page.getByRole('button', { name: 'Yeniden dene', exact: true });
+  if (await retryConnection.isVisible()) {
+    await retryConnection.click({ timeout: 1500 }).catch(async error => {
+      if (!(await page.getByRole('navigation', { name: 'Ana gezinme' }).isVisible())) throw error;
+    });
+  }
+  await page.getByRole('navigation', { name: 'Ana gezinme' }).waitFor();
+  assert.equal(store.listMessages(session.id).length, messagesBeforeOffline, 'reconnect does not submit a message');
+  await context.setOffline(true);
+  await page.goto(`${origin}/info`, { waitUntil: 'domcontentloaded' });
+  await page.getByRole('heading', { name: 'intRem kullanım rehberi', exact: true }).waitFor();
+  await context.setOffline(false);
+  await page.goto(origin);
+  await page.getByRole('navigation', { name: 'Ana gezinme' }).waitFor();
   let gatewaySetup = {
     checkedAt: '2026-09-14T08:00:00.000Z',
     connections: { state: 'auth_required', count: null },
     pools: { state: 'unavailable', count: null },
+    mappings: { state: 'auth_required', count: null },
   };
   await page.route('**/api/health', async route => {
     const response = await route.fetch();
@@ -225,7 +258,8 @@ try {
   });
   await page.getByRole('button', { name: 'Sistem', exact: true }).last().click();
   const setup = page.getByRole('region', { name: 'OmniRoute kurulumu', exact: true });
-  await setup.getByText('Yetki gerekiyor', { exact: true }).waitFor({ timeout: 5000 });
+  await setup.getByText('Yetki gerekiyor', { exact: true }).first().waitFor({ timeout: 5000 });
+  assert.equal(await setup.getByText('Yetki gerekiyor', { exact: true }).count(), 2);
   assert.equal(await setup.getByText('Bilinmiyor', { exact: true }).count(), 1);
   assert.equal(await setup.getByText('0', { exact: true }).count(), 0, 'unknown gateway state is not zero');
   await setup.getByText(/Son kontrol:/).waitFor();
@@ -235,10 +269,11 @@ try {
     assert.equal(await page.evaluate(() => document.documentElement.scrollWidth <= innerWidth), true, `gateway setup overflow ${width}`);
     await page.screenshot({ path: path.join(output, `gateway-setup-${width}.png`) });
   }
-  gatewaySetup = { ...gatewaySetup, connections: { state: 'ok', count: 3 }, pools: { state: 'ok', count: 0 } };
+  gatewaySetup = { ...gatewaySetup, connections: { state: 'ok', count: 3 }, pools: { state: 'ok', count: 0 }, mappings: { state: 'ok', count: 2 } };
   await page.getByRole('button', { name: 'Yenile', exact: true }).click();
   await setup.getByText('3', { exact: true }).waitFor();
   await setup.getByText('0', { exact: true }).waitFor();
+  await setup.getByText('2', { exact: true }).waitFor();
   await setup.getByText(/Henüz havuz kaydı yok/).waitFor();
   await setup.getByText(/hangi hesabın veya modelin kullanıldığını doğrulamaz/).waitFor();
   await page.unroute('**/api/health');
@@ -260,7 +295,7 @@ try {
   abort.abort();
   await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
   assert.deepEqual(errors, []);
-  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer', 'provider-failure-mobile-reload', 'gateway-setup-mobile-counts-and-access'], screenshots: output }));
+  console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer', 'provider-failure-mobile-reload', 'gateway-setup-mobile-counts-and-access', 'PWA-offline-reload-and-cache-boundary'], screenshots: output }));
 } finally {
   await browser?.close();
   await app.close(); store.close();

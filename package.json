@@ -14,6 +14,7 @@
     "typecheck": "tsc --noEmit",
     "test": "vitest run",
     "test:e2e": "node scripts/browser-smoke.mjs",
+    "test:restore": "node scripts/restore-smoke.mjs",
     "setup": "tsx src/server/setup.ts"
   },
   "dependencies": {

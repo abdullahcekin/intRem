@@ -48,6 +48,7 @@ export interface OmniRouteSetup {
   checkedAt: string;
   connections: OmniRouteCount;
   pools: OmniRouteCount;
+  mappings: OmniRouteCount;
 }
 export interface HealthReport {
   bridge: { ok: boolean; version: string };

@@ -16,12 +16,13 @@ const gatewayFetch = vi.fn<typeof fetch>();
 const getSetting = vi.fn((): string | null => null);
 const store = { getSetting } as unknown as Store;
 const metric = (state: string, count: number | null = null) => ({ state, count });
-function respond(providers: () => Response | Promise<Response>, combos: () => Response | Promise<Response> = () => Response.json({ combos: [], total: 0 })) {
+function respond(providers: () => Response | Promise<Response>, combos: () => Response | Promise<Response> = () => Response.json({ combos: [], total: 0 }), mappings: () => Response | Promise<Response> = () => Response.json({ mappings: [], total: 0 })) {
   gatewayFetch.mockImplementation(async input => {
     const url = new URL(String(input));
     if (url.pathname === '/api/health') return Response.json({ ok: true });
     if (url.pathname === '/api/providers') return providers();
     if (url.pathname === '/api/combos') return combos();
+    if (url.pathname === '/api/model-combo-mappings') return mappings();
     throw new Error('Unexpected gateway endpoint');
   });
 }
@@ -32,14 +33,19 @@ describe('OmniRoute salt okunur kurulum görünürlüğü', () => {
   it('yalnız doğrulanmış toplamları döndürür; kayıt ayrıntılarını ve tokenı aktarmaz', async () => {
     const timeout = vi.spyOn(AbortSignal, 'timeout');
     respond(() => Response.json({ connections: [{ id: 'PRIVATE_ACCOUNT', email: 'PRIVATE_EMAIL', accessToken: 'PRIVATE_ACCESS_TOKEN' }], total: 3 }),
-      () => Response.json({ combos: [{ name: 'PRIVATE_POOL', models: ['PRIVATE_MODEL'] }], total: 2 }));
+      () => Response.json({ combos: [{ name: 'PRIVATE_POOL', models: ['PRIVATE_MODEL'] }], total: 2 }),
+      () => Response.json({ mappings: [{ pattern: 'PRIVATE_PATTERN', comboId: 'PRIVATE_POOL_ID', enabled: false }], total: 4 }));
     const report = await healthReader({ ...config, omnirouteToken: 'oma_PRIVATE_BEARER' }, store)();
     expect(report.omniroute.setup.connections).toEqual(metric('ok', 3));
     expect(report.omniroute.setup.pools).toEqual(metric('ok', 2));
+    expect(report.omniroute.setup.mappings).toEqual(metric('ok', 4));
     expect(Number.isFinite(Date.parse(report.omniroute.setup.checkedAt))).toBe(true);
     expect(JSON.stringify(report)).not.toContain('PRIVATE_');
-    expect(gatewayFetch.mock.calls).toHaveLength(3);
-    expect(timeout.mock.calls).toEqual([[5000], [5000], [5000]]);
+    expect(gatewayFetch.mock.calls).toHaveLength(4);
+    expect(timeout.mock.calls).toEqual([[5000], [5000], [5000], [5000]]);
+    expect(gatewayFetch.mock.calls.map(([input]) => new URL(String(input)).pathname).sort()).toEqual([
+      '/api/combos', '/api/health', '/api/model-combo-mappings', '/api/providers',
+    ]);
     for (const [input, options] of gatewayFetch.mock.calls) {
       const url = new URL(String(input));
       expect(url.origin).toBe(config.omnirouteUrl);
@@ -60,6 +66,7 @@ describe('OmniRoute salt okunur kurulum görünürlüğü', () => {
     const { omniroute } = await healthReader(config, store)();
     expect(omniroute.setup.connections).toEqual(metric('ok', 0));
     expect(omniroute.setup.pools).toEqual(metric('ok', 0));
+    expect(omniroute.setup.mappings).toEqual(metric('ok', 0));
     expect(gatewayFetch.mock.calls.every(([, options]) => !new Headers(options?.headers).has('authorization'))).toBe(true);
   });
 
@@ -67,6 +74,7 @@ describe('OmniRoute salt okunur kurulum görünürlüğü', () => {
     const { omniroute } = await healthReader({ ...config, omnirouteUrl: null, omnirouteToken: 'oma_PRIVATE_UNUSED' }, store)();
     expect(omniroute.setup.connections).toEqual(metric('not_configured'));
     expect(omniroute.setup.pools).toEqual(metric('not_configured'));
+    expect(omniroute.setup.mappings).toEqual(metric('not_configured'));
     expect(gatewayFetch).not.toHaveBeenCalled();
   });
 
@@ -77,6 +85,21 @@ describe('OmniRoute salt okunur kurulum görünürlüğü', () => {
     expect(omniroute.setup.connections).toEqual(metric('auth_required'));
     expect(omniroute.setup.pools).toEqual(metric('ok', 1));
     expect(JSON.stringify(omniroute)).not.toContain('PRIVATE_');
+  });
+
+  it.each([
+    ['yetki eksik', () => new Response('PRIVATE_AUTH', { status: 401 }), 'auth_required'],
+    ['yetki yetersiz', () => new Response('PRIVATE_FORBIDDEN', { status: 403 }), 'auth_required'],
+    ['başka kaynak şeması', () => Response.json({ combos: [], total: 0 }), 'unavailable'],
+    ['tutarsız sayfalama', () => Response.json({ mappings: [], total: 2 }), 'unavailable'],
+    ['ağ hatası', () => { throw new Error('PRIVATE_NETWORK'); }, 'unavailable'],
+  ] as const)('eşleme okuması %s olduğunda diğer sayaçlar korunur', async (_label, response, state) => {
+    respond(() => Response.json({ connections: [{}], total: 3 }), () => Response.json({ combos: [{}], total: 2 }), response);
+    const { setup } = (await healthReader(config, store)()).omniroute;
+    expect(setup.connections).toEqual(metric('ok', 3));
+    expect(setup.pools).toEqual(metric('ok', 2));
+    expect(setup.mappings).toEqual(metric(state));
+    expect(JSON.stringify(setup)).not.toContain('PRIVATE_');
   });
 
   it.each([
@@ -124,13 +147,14 @@ describe('OmniRoute salt okunur kurulum görünürlüğü', () => {
     const cached = await read();
     expect(cached.omniroute.setup).toEqual(first.omniroute.setup);
     expect(cached.runner.ok).toBe(true);
-    expect(gatewayFetch).toHaveBeenCalledTimes(3);
+    expect(gatewayFetch).toHaveBeenCalledTimes(4);
     now.mockReturnValue(Date.parse('2026-09-14T10:00:31Z'));
-    respond(() => Response.json({ connections: [], total: 0 }));
+    respond(() => Response.json({ connections: [], total: 0 }), undefined, () => Response.json({ mappings: [{}], total: 2 }));
     const refreshed = await read();
     expect(refreshed.omniroute.setup.connections).toEqual(metric('ok', 0));
+    expect(refreshed.omniroute.setup.mappings).toEqual(metric('ok', 2));
     expect(refreshed.omniroute.setup.checkedAt).not.toBe(first.omniroute.setup.checkedAt);
     expect(refreshed.runner.ok).toBe(false);
-    expect(gatewayFetch).toHaveBeenCalledTimes(6);
+    expect(gatewayFetch).toHaveBeenCalledTimes(8);
   });
 });

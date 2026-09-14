@@ -184,7 +184,8 @@ export function App() {
     return (!projectFilter || session.projectId === projectFilter) && `${session.title} ${project?.name || ''} ${project?.cwd || ''}`.toLocaleLowerCase('tr').includes(filter.toLocaleLowerCase('tr'));
   }) || [];
 
-  if (!auth) return <main className="loading-page"><Brand /><p><LoaderCircle className="spinner" size={20} /> Güvenli bağlantı kontrol ediliyor…</p>{authError && <><Notice tone="error">{authError}</Notice><Button onClick={() => void loadAuth()}><RefreshCw size={18} />Yeniden dene</Button></>}</main>;
+  if (!auth && (!online || authError)) return <main className="loading-page"><Brand /><Notice>{!online ? 'Çevrimdışısınız.' : authError}</Notice><p>Cihaz erişimi ve güncel oturumlarınız sunucu bağlantısı doğrulandıktan sonra açılır.</p><Button disabled={!online} onClick={() => void loadAuth()}><RefreshCw size={18} />Yeniden dene</Button><a className="login-guide" href="/info"><Info size={18} aria-hidden="true" />Kullanım rehberi</a></main>;
+  if (!auth) return <main className="loading-page"><Brand /><p><LoaderCircle className="spinner" size={20} /> Güvenli bağlantı kontrol ediliyor…</p></main>;
   if (!auth.authenticated) return <Login auth={auth} onAuthenticated={loadAuth} />;
 
   return <div className="app-layout">

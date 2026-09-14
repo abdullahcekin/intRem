@@ -25,6 +25,8 @@ npm ci
 npm run typecheck
 npm test
 npm run build
+npm run test:e2e
+npm run test:restore
 ```
 
 API ve oturum çalıştırıcısı ayrı süreçlerdir. Veri SQLite'ta saklanır. Sunucuya özgü erişim bilgileri, kaynak belgeler ve kimlik bilgileri bu repoya eklenmez.
@@ -46,7 +48,7 @@ Rehber ve çalışma ekranı telefon, tablet ve masaüstüne uyarlanır. Tarayı
 | Mobil konuşma, soru/izin kartları, çevrimdışı taslak | Uygulanmış; 320–1440 px tarayıcı kontrolü var |
 | Claude çalıştırıcı ve kontrollü devir | Gerçek VDS mesajı, geçmiş okuma, aynı konuşmayı restart sonrası sürdürme ve servis üzerinden soru yanıtı geçti; aktif kaynak süreçler kapatılmadı |
 | Web Push ve proje/cihaz tercihleri | Uygulanmış; gerçek telefon teslimi bekliyor |
-| OmniRoute | Sağlık, salt okunur hesap bağlantısı/havuz sayısı ve erişim durumu görünür; gerçek yönlendirme ve bütçeli fallback açık iş |
+| OmniRoute | Sağlık, salt okunur hesap bağlantısı/havuz/eşleme sayısı ve erişim durumu görünür; gerçek yönlendirme ve bütçeli fallback açık iş |
 | Sağlayıcı hata açıklamaları | SDK hata türüne göre mesaj altında neden ve sonraki adım; yalnız bildirilen kota penceresi/UTC zamanı; bilinmeyen hata veya limit türü tahmin edilmez |
 | Codex | Kalıcı inceleme kuyruğu, salt okunur çalıştırma, iptal ve değişen kod kontrolü uygulandı; gerçek VDS CLI pilotu geçti |
 

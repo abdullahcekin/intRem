@@ -26,6 +26,7 @@ export function HealthPanel({ online, stream, sessions }: { online: boolean; str
         {[
           { title: 'Hesap bağlantıları', value: health.omniroute.setup.connections, empty: 'Henüz hesap bağlantısı kaydı yok.' },
           { title: 'Model havuzları (combo)', value: health.omniroute.setup.pools, empty: 'Henüz havuz kaydı yok.' },
+          { title: 'Model-havuz eşlemeleri', value: health.omniroute.setup.mappings, empty: 'Henüz eşleme kaydı yok.' },
         ].map(item => <div className="settings-row" key={item.title}><div><h3>{item.title}</h3><p className="hint">{item.value.state === 'ok'
           ? item.value.count === 0 ? item.empty : 'Gateway’de kayıtlı toplam sayı; etkin kullanım sayısı değildir.'
           : item.value.state === 'auth_required' ? 'Sunucu yöneticisi salt okunur gateway erişimini yapılandırmalı veya erişim yetkisini kontrol etmelidir.'
