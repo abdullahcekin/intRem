@@ -66,6 +66,8 @@ Kaynak terminal kapanmaz ve normal mesaj gönderimi açılmaz. Araç izinleri, `
 
 Protokolü gerçek kullanıcı oturumuna dokunmadan sınamak için derlemeden sonra Linux'ta `INTREM_PROBE_LOCAL=1 node scripts/source-hook-pilot.mjs` çalıştırılabilir. Pilot ayrı geçici proje/veritabanı ve yerel sentetik model kullanır; gerçek sağlayıcı hesabını kullanmaz. Gerçek etkileşimli terminal denemesi için ayrıca `INTREM_PROBE_INTERACTIVE=1` gerekir. Sonuç kaynak kimliğini, karar API'sini ve Claude'un aldığı cevabı ayrı raporlar; fiziksel telefon veya gerçek sağlayıcı kabulü değildir.
 
+Açık terminale sonradan kurulum denemesi: `INTREM_PROBE_LOCAL=1 INTREM_PROBE_INTERACTIVE=1 INTREM_PROBE_LATE=1 INTREM_PROBE_DEFAULT=1 node scripts/source-hook-pilot.mjs`. Varsayılan ayar kaynakları ve izleyicinin yüklenmesi için bekleme kullanır; bir sonraki yeni soru sınanır. Test için daraltılmış ayar kaynaklarını normal terminalin ayar yükleme davranışıyla eşdeğer kabul etmeyin.
+
 Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Yönetilen oturumlarda plan içeriği CLI'nin `PreToolUse` hook girdisinden mevcut insan kararına aktarılır; hook kendiliğinden onay vermez. İçerik elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
 
 ## Yerel çalıştırma

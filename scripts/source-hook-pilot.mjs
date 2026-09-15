@@ -90,7 +90,7 @@ delete env.ANTHROPIC_AUTH_TOKEN; delete env.CLAUDE_CODE_OAUTH_TOKEN; delete env.
 let output = '', timedOut = false;
 try {
   const binary = process.env.INTREM_PROBE_CLAUDE || path.join(process.env.HOME, '.local/bin/claude');
-  const common = ['--session-id', sessionId, '--model', 'claude-sonnet-4-6', '--settings', settings, '--setting-sources', localInstall ? 'local' : '', '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'];
+  const common = ['--session-id', sessionId, '--model', 'claude-sonnet-4-6', '--settings', settings, ...(process.env.INTREM_PROBE_DEFAULT === '1' ? [] : ['--setting-sources', localInstall ? 'local' : '']), '--strict-mcp-config', '--mcp-config', '{"mcpServers":{}}'];
   const cliArgs = interactive ? [marker, ...common] : ['-p', marker, '--permission-prompt-tool', 'stdio', ...common, '--output-format', 'stream-json', '--verbose', '--no-session-persistence'];
   const quote = s => `'${s.replaceAll("'", "'\\''")}'`;
   const child = spawn(interactive ? 'script' : binary, interactive ? ['-q', '-e', '-c', [binary, ...cliArgs].map(quote).join(' '), '/dev/null'] : cliArgs, { cwd, env: { ...env, TERM: 'xterm-256color' }, detached: true, stdio: ['pipe', 'pipe', 'pipe'] });
@@ -110,7 +110,7 @@ try {
   child.stdout.on('data', chunk => {
     if (output.length < 200000) output += chunk;
     if (interactive && !syntheticKeyAccepted && output.includes('synthetic-local-only')) { syntheticKeyAccepted = true; child.stdin.write('\u001b[A\r'); }
-    if (interactive && lateInstall && !nextTurn && output.includes('PROBE_READY_FOR_NEW_QUESTION')) { nextTurn = true; setTimeout(() => child.stdin.write('Sentetik soruyu sor.\r'), 3000); }
+    if (interactive && lateInstall && !nextTurn && output.includes('PROBE_READY_FOR_NEW_QUESTION')) { nextTurn = true; setTimeout(() => child.stdin.write('Sentetik soruyu sor.\r'), 10000); }
     if (interactive && answered && output.includes('PROBE_DONE_REMOTE_APPROVED')) setTimeout(stop, 100);
   });
   child.stderr.on('data', chunk => { if (output.length < 200000) output += chunk; });
