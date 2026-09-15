@@ -4,7 +4,7 @@ import './info.css';
 
 const features = [
   { icon: FolderOpen, title: 'Projeler ve oturumlar', text: 'Sunucunuzdaki izin verilen proje klasörlerini ekleyin. Claude oturumu başlatın, konuşmayı izleyin ve mesaj gönderin.' },
-  { icon: MessageSquare, title: 'Sorular, izinler ve planlar', text: 'Bekleyenler ekranından soruları yanıtlayın. Araç izinlerini ve içeriğini okuyabildiğiniz planları ayrı ayrı onaylayın veya reddedin.' },
+  { icon: MessageSquare, title: 'Sorular, izinler ve planlar', text: 'intRem’in yönettiği oturumlarda Bekleyenler ekranından soruları, araç izinlerini ve planları yanıtlayın. Yalnız izlenen kaynak oturumlarda yanıt terminalden verilir.' },
   { icon: ShieldCheck, title: 'Kontrollü devir ve inceleme', text: 'Mevcut konuşmaları izleyin; uygun duruma geldiklerinde yönetimi devralın. Codex ile kod incelemesi isteyin ve sonucu okuyun.' },
   { icon: Bell, title: 'Bildirimler ve bağlantı durumu', text: 'Cihaz ve proje bazında bildirim tercihlerini yönetin. Sistem ekranından çalıştırıcının ve bağlı servislerin durumunu izleyin.' },
   { icon: Fingerprint, title: 'Passkey ile erişim', text: 'Cihazınızın desteklediği parmak izi, yüz tanıma veya ekran kilidiyle giriş yapın. Ayarlar’dan anahtar ekleyin veya erişimini iptal edin.' },
@@ -70,7 +70,7 @@ export function InfoPage() {
         <h2 id="usage-title">İlk çalışmanızı başlatın</h2>
         <ol className="info-steps">
           <li><h3>Projenizi ekleyin</h3><p>Oturumlar ekranında proje ekleyin. Klasör yolu, intRem’in çalıştığı sunucuda bulunmalı ve yöneticinin izin verdiği köklerden birinin altında olmalıdır.</p></li>
-          <li><h3>Bir oturum seçin veya başlatın</h3><p>Konuşmayı açın ve mesajınızı gönderin. Göndermeden önce seçili proje ve oturum adını kontrol edin. Mevcut kaynak oturum aktifse izleyin; kontrollü devir için uygun durumu bekleyin.</p></li>
+          <li><h3>Bir oturum seçin veya başlatın</h3><p>Konuşmayı açın ve mesajınızı gönderin. Göndermeden önce seçili proje ve oturum adını kontrol edin. Mevcut oturumu bağlamak kaynak geçmişini izler; terminalin canlı kontrolünü devralmaz. Kayda geçen sorular ve seçenekleri okunabilir, ancak yanıt ve izinler kaynak terminalden verilir; bunlar için intRem onay bildirimi göndermez. Kaynak süreç çıktıktan sonra kontrollü devirle aynı konuşmaya devam edebilirsiniz.</p></li>
           <li><h3>Bekleyen kararları yanıtlayın</h3><p>Bekleyenler ekranında soruyu, araç isteğini veya plan içeriğini okuyun. Kararınız yalnız ilgili istek için geçerlidir. Plan içeriği alınamıyorsa onay verilemez.</p></li>
           <li><h3>Tercihlerinizi düzenleyin</h3><p>Ayarlar’dan görünümü, anahtarları ve bildirim tercihlerini yönetin. Uzaktan yeni komut kabulünü duraklatabilirsiniz; çalışan ajanlar çalışmaya devam edebilir.</p></li>
         </ol>

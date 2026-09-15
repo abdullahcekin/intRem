@@ -17,6 +17,7 @@ export interface Session {
 export interface Message {
   id: string; sessionId: string; clientId: string | null; role: 'user' | 'assistant' | 'system';
   text: string; state: MessageState; createdAt: string; updatedAt: string; error: string | null;
+  sourceQuestion?: { answered: boolean };
 }
 export interface Question { question: string; header?: string; options: { label: string; description?: string }[]; multiSelect?: boolean }
 export interface Interaction {

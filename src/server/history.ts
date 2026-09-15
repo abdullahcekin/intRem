@@ -4,6 +4,7 @@ import { fileURLToPath } from 'node:url';
 import type { AppConfig } from './config.js';
 import type { Message, Session } from '../shared/types.js';
 import { AppError } from './errors.js';
+import type { SourceHistoryRow } from '../runtime/source-history.js';
 
 const execute = promisify(execFile);
 export function historyReader(config: AppConfig) {
@@ -19,8 +20,8 @@ export function historyReader(config: AppConfig) {
       const { stdout } = await execute(process.execPath, ['--max-old-space-size=256', ...(development ? ['--import', 'tsx'] : []), script, session.claudeSessionId, cwd], {
         env: { ...process.env, CLAUDE_CONFIG_DIR: config.claudeHome }, timeout: 12000, maxBuffer: 4 * 1024 * 1024, windowsHide: true,
       });
-      const rows = JSON.parse(stdout) as { id: string; role: 'user' | 'assistant'; text: string }[];
-      const messages: Message[] = rows.map(row => ({ id: `source:${row.id}`, sessionId: session.id, clientId: null, role: row.role, text: `[Kaynak geçmişi]\n${row.text}`, state: 'completed', createdAt: session.createdAt, updatedAt: session.createdAt, error: null }));
+      const rows = JSON.parse(stdout) as SourceHistoryRow[];
+      const messages: Message[] = rows.map(row => ({ id: `source:${row.id}`, sessionId: session.id, clientId: null, role: row.role, text: `[Kaynak geçmişi]\n${row.text}`, state: 'completed', createdAt: row.createdAt ?? session.createdAt, updatedAt: row.createdAt ?? session.createdAt, error: null, ...(row.sourceQuestion ? { sourceQuestion: row.sourceQuestion } : {}) }));
       cache.set(session.id, { until: Date.now() + 4000, messages });
       for (const [id, entry] of cache) if (entry.until < Date.now() - 60000) cache.delete(id);
       return messages;

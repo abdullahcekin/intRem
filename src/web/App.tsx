@@ -50,7 +50,8 @@ export function Modal({ title, onClose, children, busy = false }: { title: strin
   </dialog>, document.body);
 }
 
-export function StatusBadge({ state }: { state: Session['state'] }) {
+export function StatusBadge({ state, source }: { state: Session['state']; source?: Session['source'] }) {
+  if (source === 'imported') return <span className="badge muted"><LockKeyhole size={13} />Yalnız izleme</span>;
   const waiting = state === 'waiting_answer' || state === 'permission_required';
   return <span className={`badge ${waiting || state === 'delivery_unknown' ? 'warning' : state === 'working' ? 'info' : state === 'offline' ? 'muted' : 'success'}`}>
     {waiting ? <Bell size={13} /> : state === 'working' ? <Activity size={13} /> : state === 'offline' ? <WifiOff size={13} /> : state === 'delivery_unknown' ? <AlertCircle size={13} /> : <Check size={13} />}
@@ -234,7 +235,7 @@ export function App() {
             {filtered.length ? <div className="session-rows">{filtered.map(session => {
               const project = snapshot.projects.find(project => project.id === session.projectId);
               const waiting = pending.filter(item => item.sessionId === session.id).length;
-              return <button className={`session-row ${selectedId === session.id ? 'selected' : ''}`} key={session.id} onClick={() => chooseSession(session.id)} aria-pressed={selectedId === session.id}><span className="session-row-top"><span className="project-name">{project?.name || 'Proje bulunamadı'}</span><time>{displayTime(session.updatedAt)}</time></span><strong>{session.title}</strong><span className="session-row-status"><StatusBadge state={session.state} />{waiting > 0 && <span className="pending-count">{waiting} bekleyen</span>}</span><span className="session-row-meta">{project?.host || 'Host bilinmiyor'}<span>·</span>{session.source === 'managed' ? 'intRem ile başlatıldı' : 'Mevcut oturumdan devralındı'}</span></button>;
+              return <button className={`session-row ${selectedId === session.id ? 'selected' : ''}`} key={session.id} onClick={() => chooseSession(session.id)} aria-pressed={selectedId === session.id}><span className="session-row-top"><span className="project-name">{project?.name || 'Proje bulunamadı'}</span><time>{displayTime(session.updatedAt)}</time></span><strong>{session.title}</strong><span className="session-row-status"><StatusBadge state={session.state} source={session.source} />{waiting > 0 && <span className="pending-count">{waiting} bekleyen</span>}</span><span className="session-row-meta">{project?.host || 'Host bilinmiyor'}<span>·</span>{session.source === 'managed' ? 'intRem ile başlatıldı' : 'Kaynak oturum bağlandı'}</span></button>;
             })}</div> : <div className="empty-list"><MessageSquare size={30} /><h2>{snapshot.sessions.length ? 'Eşleşen oturum yok' : 'Henüz oturum yok'}</h2><p>{snapshot.sessions.length ? 'Arama metnini veya proje filtresini değiştirin.' : 'Bir projede yeni bir çalışma başlatın veya mevcut Claude oturumunuzu bağlayın.'}</p><Button className="primary" onClick={() => setModal(snapshot.projects.length ? 'session' : 'project')} disabled={!canAct || !snapshot.remoteControlEnabled}><Plus size={18} />{snapshot.projects.length ? 'Yeni oturum başlat' : 'İlk projeyi ekle'}</Button></div>}
             <div className="list-footer"><LockKeyhole size={14} />Oturum hedefleri her işlemde doğrulanır.</div>
           </div>

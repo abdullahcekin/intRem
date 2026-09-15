@@ -321,7 +321,7 @@ export class Store {
       return message;
     });
   }
-  updateMessage(id: string, patch: Partial<Message>): Message {
+  updateMessage(id: string, patch: Partial<Omit<Message, 'sourceQuestion'>>): Message {
     for (const [key, value] of Object.entries(patch)) {
       if (key === 'text' && typeof value === 'string') continue;
       if (key === 'error' && (typeof value === 'string' || value === null)) continue;

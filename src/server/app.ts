@@ -99,7 +99,9 @@ export async function createApp({ config, store = new Store(config.dbPath), auth
   app.get('/api/sessions/:id/messages', async req => {
     const session = sessionById(idParam(req));
     const history = session.source === 'imported' ? await sourceHistory(session, await allowedProjectPath(store.getProject(session.projectId)!.cwd, config.allowedRoots)) : [];
-    return { messages: [...history, ...store.listMessages(session.id)] };
+    const messages = [...history, ...store.listMessages(session.id)];
+    if (session.source === 'imported') messages.sort((a, b) => Date.parse(a.createdAt) - Date.parse(b.createdAt));
+    return { messages };
   });
   app.post('/api/sessions/:id/messages', async req => store.enqueueMessage(idParam(req), z.object({ clientId: z.string().min(1).max(100), text: z.string().trim().min(1).max(32000), generation: z.string().min(1) }).parse(req.body)));
   app.post('/api/messages/:id/cancel', async req => store.cancelMessage(idParam(req)));

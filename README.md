@@ -54,7 +54,9 @@ Rehber ve çalışma ekranı telefon, tablet ve masaüstüne uyarlanır. Tarayı
 | Maliyet görünürlüğü | Son başarılı SDK sonucundaki USD tahmini ve bildirim zamanı kalıcıdır; eksik/hatalı sonuç bilinmiyor, sonuçlar toplanmaz; fatura veya bütçe sınırı değildir |
 | Codex | Kalıcı inceleme kuyruğu, salt okunur çalıştırma, iptal ve değişen kod kontrolü uygulandı; gerçek VDS CLI pilotu geçti |
 
-Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin mesajını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Kaynak zaman damgaları SDK tarafından verilmediğinden aktarılan mesajların zamanı aktarım anıdır. Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Plan içeriği CLI'nin `PreToolUse` hook girdisinden mevcut insan kararına aktarılır; hook kendiliğinden onay vermez. İçerik elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
+Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin/soru kaydını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Geçerli kaynak zaman damgaları korunur; eksikse aktarım zamanı kullanılır. Kaynak `AskUserQuestion` soruları ve seçenekleri salt okunur gösterilir; eşleşen başarılı araç sonucu varsa yanıt kaydı olduğu belirtilir. Kaynak görev bildirimleri sistem mesajıdır. Mevcut oturumu bağlamak terminalin canlı onay mekanizmasına bağlanmaz: bu sorular kaynak terminalden yanıtlanır ve intRem onay bildirimi üretmez. Uzaktan yanıt ve izin akışı yalnız intRem’in yönettiği oturumlarda çalışır.
+
+Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Yönetilen oturumlarda plan içeriği CLI'nin `PreToolUse` hook girdisinden mevcut insan kararına aktarılır; hook kendiliğinden onay vermez. İçerik elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
 
 ## Yerel çalıştırma
 

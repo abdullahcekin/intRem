@@ -1,5 +1,5 @@
 import assert from 'node:assert/strict';
-import { mkdtempSync, mkdirSync, rmSync } from 'node:fs';
+import { appendFileSync, mkdtempSync, mkdirSync, realpathSync, rmSync, writeFileSync } from 'node:fs';
 import { tmpdir } from 'node:os';
 import path from 'node:path';
 import { chromium } from '@playwright/test';
@@ -313,8 +313,31 @@ try {
   const longToken = 'uzun-kesintisiz-mesaj-ve-kod-parçası'.repeat(24);
   const importedText = `İçe aktarılmış konuşmanın okunabilirlik kontrolü.\n\nProjenin son değişikliklerini inceledim. Konuşma alanı artık ekranın kalan yüksekliğini kullanıyor; mesaj yazarken önceki yanıtları kaydırarak okuyabilirsiniz.\n\nTamamlanan işler\n• Dar ekranda başlık sadeleştirildi.\n• Yazı alanı ve gönder düğmesi görünür tutuldu.\n• Oturum değiştirmeden odak görünümüne geçilebiliyor.\n\nUzun satır kontrolü:\n${longToken}\n\n\`\`\`typescript\nconst output = '${longToken}';\n\`\`\``;
   store.appendMessage(imported.id, 'assistant', importedText);
+  const sourceProject = path.join(config.claudeHome, 'projects', realpathSync(store.getProject(session.projectId).cwd).replace(/[^a-zA-Z0-9]/g, '-'));
+  mkdirSync(sourceProject, { recursive: true });
+  const sourceFile = path.join(sourceProject, `${imported.claudeSessionId}.jsonl`);
+  const sourceNoticeId = '00000000-0000-4000-8000-000000000124';
+  const sourceQuestionId = '00000000-0000-4000-8000-000000000125';
+  const sourceQuestionTime = new Date(Date.now() + 1000).toISOString();
+  const sourceQuestion = { type: 'tool_use', id: 'source-question-tool', name: 'AskUserQuestion', input: { questions: [{ header: 'Kaynak yayın kararı', question: 'Hazırlanan iki değişiklik uygulansın mı?', options: [{ label: 'İkisini uygula', description: 'İki değişikliği birlikte uygula.' }, { label: 'Beklet', description: 'Mevcut durumu koru.' }], multiSelect: false }] } };
+  writeFileSync(sourceFile, [
+    { type: 'user', uuid: sourceNoticeId, parentUuid: null, sessionId: imported.claudeSessionId, timestamp: '2026-01-01T12:00:00.000Z', message: { role: 'user', content: '<task-notification>\n<summary>Kaynak arka plan incelemesi tamamlandı.</summary>\n</task-notification>' } },
+    { type: 'assistant', uuid: sourceQuestionId, parentUuid: sourceNoticeId, sessionId: imported.claudeSessionId, timestamp: sourceQuestionTime, message: { id: 'source-assistant-message', role: 'assistant', content: [sourceQuestion] } },
+  ].map(row => JSON.stringify(row)).join('\n') + '\n');
   await page.goto(`${origin}/?session=${imported.id}`);
   await page.getByText('İçe aktarılmış konuşmanın okunabilirlik kontrolü.', { exact: false }).waitFor();
+  const sourceQuestionCard = page.locator('.message').filter({ hasText: 'Kaynak yayın kararı' });
+  await sourceQuestionCard.getByText('Kaynakta bu soruya yanıt kaydı bulunmuyor.', { exact: false }).waitFor();
+  assert.ok((await sourceQuestionCard.innerText()).includes('İkisini uygula'));
+  assert.ok((await sourceQuestionCard.innerText()).includes('Mevcut durumu koru.'));
+  assert.equal(await sourceQuestionCard.getByRole('button').count(), 0, 'source history offers no live approval action');
+  assert.equal(await sourceQuestionCard.getByText('Tamamlandı', { exact: true }).count(), 0, 'an unanswered source question is not labelled completed');
+  assert.equal(await page.locator('.message.system').filter({ hasText: 'Kaynak arka plan incelemesi tamamlandı.' }).count(), 1, 'source notifications are not attributed to the user');
+  assert.equal(await page.locator('.conversation-heading .badge').innerText(), 'Yalnız izleme');
+  assert.equal(await page.locator('.message').last().innerText(), await sourceQuestionCard.innerText(), 'a new source question follows older local import notes');
+  const historyResponse = await page.request.get(`${origin}/api/sessions/${imported.id}/messages`);
+  const historyMessages = (await historyResponse.json()).messages;
+  assert.equal(historyMessages.find(message => message.sourceQuestion)?.createdAt, sourceQuestionTime, 'the actual SDK source timestamp survives the API');
   for (const viewport of [{ width: 375, height: 667 }, { width: 320, height: 568 }]) {
     await assertConversationViewport(page, viewport);
     assert.equal(await page.getByRole('button', { name: 'Mesajı bu oturuma gönder' }).isDisabled(), true, 'an imported source remains read-only');
@@ -322,7 +345,13 @@ try {
     assert.ok((await page.getByRole('button', { name: 'Kontrollü devral', exact: true }).boundingBox())?.height >= 44, 'read-only takeover touch target remains available');
     await page.locator('.messages').evaluate(node => { node.scrollTop = 0; });
     await page.screenshot({ path: path.join(output, `conversation-imported-${viewport.width}.png`) });
+    await sourceQuestionCard.scrollIntoViewIfNeeded();
+    assert.equal(await page.locator('.messages').evaluate(node => node.scrollWidth <= node.clientWidth), true, 'source question choices wrap on mobile');
+    await page.screenshot({ path: path.join(output, `conversation-source-question-${viewport.width}.png`) });
   }
+  appendFileSync(sourceFile, JSON.stringify({ type: 'user', uuid: '00000000-0000-4000-8000-000000000126', parentUuid: sourceQuestionId, sessionId: imported.claudeSessionId, timestamp: new Date(Date.now() + 2000).toISOString(), message: { role: 'user', content: [{ type: 'tool_result', tool_use_id: 'source-question-tool', content: 'Beklet' }] } }) + '\n');
+  await sourceQuestionCard.getByText('Kaynakta bu soruya yanıt kaydı var.', { exact: true }).waitFor({ timeout: 15000 });
+  assert.equal(store.db.prepare('SELECT count(*) AS total FROM interactions WHERE sessionId = ?').get(imported.id).total, 0, 'reading source questions never creates a managed approval');
   const importedDraft = page.getByLabel('Bu oturuma mesaj', { exact: true });
   await importedDraft.fill('Kaynak oturum devredilene kadar saklanacak mobil taslak.');
   await assertConversationViewport(page, { width: 375, height: 400 });

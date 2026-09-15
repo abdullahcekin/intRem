@@ -50,6 +50,10 @@ Tüm `/api` uçları, `/api/auth/*` dışında giriş gerektirir. Yazma istekler
 
 Store, kendi şemasını kurar; auth modülü kendi tablolarını aynı bağlantıda kurar. `updateSession` ve `updateMessage` yalnız ortak tip alanlarını kabul eder. `get*` bulunamadığında `undefined`; alan/koşul hatalarında `.statusCode`/`.code` taşıyan `AppError` kullanılır (`src/server/errors.ts`, root oluşturur).
 
+## Bağlı kaynak oturumun soru geçmişi
+
+İçe aktarılan oturum canlı terminal kontrolü sağlamaz. SDK ana konuşma geçmişindeki `AskUserQuestion` araç blokları soru ve seçenekleriyle salt okunur gösterilir. Eşleşen başarılı `tool_result` yalnız yanıt kaydı kanıtıdır; sonucun olmaması uygulanabilir bir intRem izni veya canlı bekleme kanıtı değildir. Bu gösterim `interactions` kaydı, push onayı veya terminal girdisi üretmez. Kaynak `<task-notification>` iletileri sistem rolünde gösterilir. Kaynak zaman damgası geçerliyse korunur; içe aktarma notlarıyla zaman sırasına konur. Araç izinlerinin tamamı ve terminal ekranı birebir kopyalanmaz.
+
 ## Plan içeriğinin onaya taşınması
 
 Claude Code, [ExitPlanMode hook girdisine](https://code.claude.com/docs/en/hooks#exitplanmode) somut `plan` ve `planFilePath` alanlarını ekler; modelin doğrudan araç girdisi boş olabilir. Runner bu girdinin kopyasını `PreToolUse` üzerinden `ask + updatedInput` ile mevcut `canUseTool` karar döngüsüne taşır. Hook `allow` üretmez. Eksik plan reddedilir; kullanıcı kararı aynı oturum/nesil/istek ve içerik hash'iyle bir kez uygulanır. Onay için plan dosyası aranmaz veya diskten yeniden okunmaz; callback'in onaylanan snapshot'ı döndürülür. Plan onayı sonraki araç izinlerinin yerine geçmez.
