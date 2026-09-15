@@ -15,8 +15,10 @@ import { allowedProjectPath, discoverSessions, isSourceAlive } from '../runtime/
 import { healthReader } from './health.js';
 import { PushService, validatePushEndpoint } from './push.js';
 import { historyReader } from './history.js';
+import { SourceHooks } from './source-hooks.js';
+import { installSourceQuestionHook } from './source-hook-setup.js';
 
-export async function createApp({ config, store = new Store(config.dbPath), auth = new Auth(store.db) }: { config: AppConfig; store?: Store; auth?: Auth }) {
+export async function createApp({ config, store = new Store(config.dbPath), auth = new Auth(store.db), sourceHooks = new SourceHooks(config, store) }: { config: AppConfig; store?: Store; auth?: Auth; sourceHooks?: SourceHooks }) {
   const app = Fastify({ logger: false, bodyLimit: 128 * 1024, trustProxy: false });
   await app.register(cookie);
   const identities = new WeakMap<FastifyRequest, Identity | null>();
@@ -54,9 +56,25 @@ export async function createApp({ config, store = new Store(config.dbPath), auth
   const sessionById = (id: string) => { const s = store.getSession(id); if (!s) throw new AppError(404, 'SESSION_NOT_FOUND', 'Oturum bulunamadı.'); return s; };
   const discoveryOptions = { claudeHome: config.claudeHome, allowedRoots: config.allowedRoots };
   const sourceHistory = historyReader(config);
+  app.addHook('onReady', async () => sourceHooks.start());
   app.get('/health', async () => ({ ok: true }));
   app.get('/api/health', healthReader(config, store));
-  app.get('/api/snapshot', async () => ({ projects: store.listProjects(), sessions: store.listSessions(), interactions: store.listInteractions(), cursor: store.cursor(), remoteControlEnabled: store.getSetting('remoteControlEnabled', true) }));
+  app.get('/api/snapshot', async () => ({ projects: store.listProjects(), sessions: store.listSessions().map(session => ({ ...session, sourceQuestionsConfigured: session.source === 'imported' && store.getSetting(`sourceQuestions:${session.id}`, false) })), interactions: store.listInteractions(), cursor: store.cursor(), remoteControlEnabled: store.getSetting('remoteControlEnabled', true) }));
+  app.post('/api/sessions/:id/source-questions', async req => {
+    const body = z.object({ generation: z.string(), enabled: z.boolean() }).parse(req.body);
+    const session = sessionById(idParam(req));
+    if (session.generation !== body.generation || session.source !== 'imported') throw new AppError(409, 'STALE_GENERATION', 'Kaynak oturum hedefi değişti.');
+    if (body.enabled) {
+      if (!store.getSetting('remoteControlEnabled', true)) throw new AppError(409, 'CONTROL_DISABLED', 'Uzaktan kontrol kapalı.');
+      const project = store.getProject(session.projectId)!;
+      await installSourceQuestionHook(config, project.id, project.cwd, sourceHooks.socketPath);
+      const current = sessionById(session.id);
+      if (current.generation !== body.generation || current.source !== 'imported') throw new AppError(409, 'STALE_GENERATION', 'Kurulum sırasında kaynak oturum değişti; bağlantı etkinleştirilmedi.');
+    } else sourceHooks.disconnectSession(session.id);
+    store.setSetting(`sourceQuestions:${session.id}`, body.enabled);
+    store.event('source.questions.configured', session.id, { enabled: body.enabled });
+    return { configured: body.enabled };
+  });
   app.post('/api/projects', async req => {
     const input = z.object({ name: z.string().trim().min(1).max(80), cwd: z.string().min(1).max(2048), mode: z.enum(['default', 'plan']).optional() }).parse(req.body);
     const cwd = await allowedProjectPath(input.cwd, config.allowedRoots);
@@ -114,6 +132,7 @@ export async function createApp({ config, store = new Store(config.dbPath), auth
   });
   app.post('/api/reviews/:id/cancel', async req => store.cancelReview(idParam(req)));
   app.post('/api/interactions/:id/decision', async req => {
+    if (store.getInteraction(idParam(req))?.origin === 'source_hook') await sourceHooks.verify(idParam(req));
     const body = z.object({ generation: z.string(), contentHash: z.string(), behavior: z.enum(['allow', 'deny']), answers: z.record(z.string(), z.string().max(10000)).optional(), reason: z.string().max(2000).optional() }).parse(req.body);
     return store.decideInteraction(idParam(req), { generation: body.generation, contentHash: body.contentHash, decision: { behavior: body.behavior, ...(body.answers ? { answers: body.answers } : {}), ...(body.reason ? { reason: body.reason } : {}) }, deviceId: getIdentity(req)!.device.id });
   });
@@ -151,7 +170,7 @@ export async function createApp({ config, store = new Store(config.dbPath), auth
     const timer = setInterval(pump, 1000); timer.unref(); streams.add(close); req.raw.on('close', close); pump();
   });
   const stopPush = push.start();
-  app.addHook('onClose', async () => { for (const close of streams) close(); await stopPush(); });
+  app.addHook('onClose', async () => { for (const close of streams) close(); await stopPush(); await sourceHooks.close(); });
   const webRoot = fileURLToPath(new URL('../web/', import.meta.url));
   if (fs.existsSync(path.join(webRoot, 'index.html')) && !webRoot.includes(`${path.sep}src${path.sep}`)) {
     await app.register(staticFiles, { root: webRoot, prefix: '/' });

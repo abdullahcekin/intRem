@@ -13,14 +13,16 @@ export interface Session {
   fallbackReason: string | null; controlEnabled: boolean;
   createdAt: string; updatedAt: string; lastActivityAt: string | null;
   costEstimate: { costUsd: number | null; observedAt: string } | null;
+  sourceQuestionsConfigured?: boolean;
 }
 export interface Message {
   id: string; sessionId: string; clientId: string | null; role: 'user' | 'assistant' | 'system';
   text: string; state: MessageState; createdAt: string; updatedAt: string; error: string | null;
-  sourceQuestion?: { answered: boolean };
+  sourceQuestion?: { answered: boolean; toolUseId?: string };
 }
 export interface Question { question: string; header?: string; options: { label: string; description?: string }[]; multiSelect?: boolean }
 export interface Interaction {
+  origin?: 'managed' | 'source_hook';
   id: string; sessionId: string; generation: string; requestId: string; contentHash: string;
   kind: 'permission' | 'question' | 'plan'; toolName: string; input: Record<string, unknown>;
   status: 'pending' | 'answered' | 'expired' | 'cancelled'; createdAt: string; expiresAt: string;

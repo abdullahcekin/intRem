@@ -6,7 +6,7 @@ export interface SourceHistoryRow {
   role: Message['role'];
   text: string;
   createdAt?: string;
-  sourceQuestion?: { answered: boolean };
+  sourceQuestion?: { answered: boolean; toolUseId?: string };
 }
 
 function blocks(message: SessionMessage): Record<string, unknown>[] {
@@ -42,7 +42,7 @@ export function projectSourceHistory(messages: SessionMessage[]): SourceHistoryR
     if (message.type === 'assistant') content.forEach((block, index) => {
       if (block.type !== 'tool_use' || block.name !== 'AskUserQuestion') return;
       const question = questionText(block.input);
-      if (question) rows.push({ id: `${message.uuid}:question:${index}`, role: 'assistant', text: `Kaynak terminaldeki soru\n\n${question}`.slice(0, 16000), createdAt, sourceQuestion: { answered: typeof block.id === 'string' && answered.has(block.id) } });
+      if (question) rows.push({ id: `${message.uuid}:question:${index}`, role: 'assistant', text: `Kaynak terminaldeki soru\n\n${question}`.slice(0, 16000), createdAt, sourceQuestion: { answered: typeof block.id === 'string' && answered.has(block.id), ...(typeof block.id === 'string' ? { toolUseId: block.id } : {}) } });
     });
     return rows;
   }).slice(-200);

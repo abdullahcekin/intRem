@@ -29,6 +29,7 @@ export function InteractionDialog({ item, session, project, canAct, onClose, onR
   return <Modal title={item.kind === 'question' ? 'Claude cevabınızı bekliyor' : item.kind === 'plan' ? 'Plan kararı' : 'Araç izni'} onClose={onClose} busy={busy}>
     <div className="target-box"><ShieldCheck size={22} /><div><strong>{project?.name ?? 'Hedef doğrulanamadı'}</strong><span className="mono">{project?.cwd}</span><span>{session?.title} · {item.toolName}</span></div></div>
     <p className="hint">Son geçerlilik: {displayTime(item.expiresAt)}. Bu karar yalnız bu istek ve süreç nesli için geçerlidir.</p>
+    {item.origin === 'source_hook' && <Notice tone="info">Bu soru kaynak Claude sürecinden canlı geldi. Seçtiğiniz yanıt aynı soruya iletilecek; terminal kapanmaz. Normal mesaj gönderimi ayrı bir yetenektir.</Notice>}
     {blocked && <Notice>{blocked}</Notice>}{!canAct && <Notice>Bağlantı ve güncel oturum durumu doğrulanmadan karar gönderilemez.</Notice>}
     {error && <Notice tone="error">{error}</Notice>}
     {item.kind === 'question' ? <div className="question-list">{questions.map((q, i) => <fieldset key={`${item.id}-${i}`} disabled={busy || !!blocked || !canAct}>

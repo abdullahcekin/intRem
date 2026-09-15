@@ -54,7 +54,17 @@ Rehber ve çalışma ekranı telefon, tablet ve masaüstüne uyarlanır. Tarayı
 | Maliyet görünürlüğü | Son başarılı SDK sonucundaki USD tahmini ve bildirim zamanı kalıcıdır; eksik/hatalı sonuç bilinmiyor, sonuçlar toplanmaz; fatura veya bütçe sınırı değildir |
 | Codex | Kalıcı inceleme kuyruğu, salt okunur çalıştırma, iptal ve değişen kod kontrolü uygulandı; gerçek VDS CLI pilotu geçti |
 
-Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin/soru kaydını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Geçerli kaynak zaman damgaları korunur; eksikse aktarım zamanı kullanılır. Kaynak `AskUserQuestion` soruları ve seçenekleri salt okunur gösterilir; eşleşen başarılı araç sonucu varsa yanıt kaydı olduğu belirtilir. Kaynak görev bildirimleri sistem mesajıdır. Mevcut oturumu bağlamak terminalin canlı onay mekanizmasına bağlanmaz: bu sorular kaynak terminalden yanıtlanır ve intRem onay bildirimi üretmez. Uzaktan yanıt ve izin akışı yalnız intRem’in yönettiği oturumlarda çalışır.
+Canlı kaynak süreç PID ve başlangıç kimliğiyle doğrulanır; çıktıktan sonra kayıtlı konuşma `resume` ile sürdürülür. İzleme ekranı SDK üzerinden son 200 metin/soru kaydını yeniler; devirde bu geçmiş uygulama deposuna aktarılır. Geçerli kaynak zaman damgaları korunur; eksikse aktarım zamanı kullanılır. Kaynak `AskUserQuestion` soruları ve seçenekleri gösterilir; eşleşen başarılı araç sonucu varsa yanıt kaydı olduğu belirtilir. Kaynak görev bildirimleri sistem mesajıdır. Geçmiş kaydı tek başına yanıt yetkisi veya onay bildirimi üretmez.
+
+### Kaynak terminaldeki yeni soruları yanıtlama
+
+1. Linux sunucudaki mevcut oturumu bağlayın, konuşmanın altındaki **Canlı sorular → Canlı soruları bağla** düğmesini kullanın. Projenin `.claude/settings.local.json` dosyasına yalnız soru hook'u eklenir; mevcut ayarlar korunur ve özel yedeği alınır. Aynı projedeki diğer oturumlar ayrıca bağlanmadıkça etkinleşmez.
+2. Kaynak Claude ayarı yükleyip yeni bir `AskUserQuestion` sorusu gönderdiğinde **Bekleyenler** veya konuşmadaki **İncele** üzerinden seçenek seçin ya da cevap yazın. Bildirim tercihleri açıksa bu gerçek bekleme kaydı mevcut push akışına girer. Kurulum kaydı tek başına canlı bağlantı kanıtı değildir; önceden açılmış soru terminalden yanıtlanır.
+3. Yanıt yalnız bağlı soru, oturum nesli ve içerik için bir kez gönderilir. Bağlantı koptuğunda veya 13 dakikalık bekleme dolduğunda kart geçersizleşir; kaynak normal soru akışına döner. Belirsiz teslimat otomatik tekrarlanmaz; kaynaktaki yanıt kaydı ayrıca kontrol edilir.
+
+Kaynak terminal kapanmaz ve normal mesaj gönderimi açılmaz. Araç izinleri, `ExitPlanMode` ve alt ajan soruları bu bağlantının kapsamı dışındadır. Kaynak süreç çıktıktan sonraki kontrollü devir ve intRem’in yönettiği oturumların soru/izin akışı ayrı çalışır. Uygulama ile hook aynı Linux kullanıcısında çalışmalıdır.
+
+Protokolü gerçek kullanıcı oturumuna dokunmadan sınamak için derlemeden sonra Linux'ta `INTREM_PROBE_LOCAL=1 node scripts/source-hook-pilot.mjs` çalıştırılabilir. Pilot ayrı geçici proje/veritabanı ve yerel sentetik model kullanır; gerçek sağlayıcı hesabını kullanmaz. Gerçek etkileşimli terminal denemesi için ayrıca `INTREM_PROBE_INTERACTIVE=1` gerekir. Sonuç kaynak kimliğini, karar API'sini ve Claude'un aldığı cevabı ayrı raporlar; fiziksel telefon veya gerçek sağlayıcı kabulü değildir.
 
 Model alanı CLI yanıtında bildirilen kimliktir; gateway hesabının kanıtı değildir. Yönetilen oturumlarda plan içeriği CLI'nin `PreToolUse` hook girdisinden mevcut insan kararına aktarılır; hook kendiliğinden onay vermez. İçerik elde edilemiyorsa onay kapalı kalır. Ücretli fallback etkin değildir.
 

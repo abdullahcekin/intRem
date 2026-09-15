@@ -8,7 +8,7 @@ import { AppError } from './errors.js';
 type Row = Record<string, unknown>;
 type NewProject = Pick<Project, 'name' | 'cwd' | 'host'> & Partial<Pick<Project, 'mode'>>;
 type NewSession = Pick<Session, 'projectId'> & Partial<Pick<Session, 'title' | 'source' | 'claudeSessionId' | 'sourcePid' | 'sourceStart' | 'tmuxPane'>>;
-type NewInteraction = Pick<Interaction, 'sessionId' | 'generation' | 'requestId' | 'kind' | 'toolName' | 'input' | 'expiresAt'>;
+type NewInteraction = Pick<Interaction, 'sessionId' | 'generation' | 'requestId' | 'kind' | 'toolName' | 'input' | 'expiresAt'> & Pick<Interaction, 'origin'>;
 type InteractionDecision = { generation: string; contentHash: string; decision: DecisionInput; deviceId: string };
 const sessionStates = ['idle', 'working', 'waiting_answer', 'permission_required', 'offline', 'delivery_unknown'];
 const messageStates = ['queued', 'delivering', 'processing', 'completed', 'failed', 'cancelled', 'delivery_unknown'];
@@ -52,6 +52,7 @@ export class Store {
   readonly db: DatabaseSync;
   private inTransaction = false;
   private closed = false;
+  private sourceHooks = new Set<string>();
 
   constructor(path: string) {
     if (path !== ':memory:') mkdirSync(dirname(path), { recursive: true });
@@ -108,6 +109,11 @@ export class Store {
         UNIQUE(sessionId,clientId)
       );
     `);
+    this.transaction(() => {
+      if (!this.db.prepare('PRAGMA table_info(interactions)').all().some(row => row.name === 'origin')) {
+        this.db.exec("ALTER TABLE interactions ADD COLUMN origin TEXT NOT NULL DEFAULT 'managed' CHECK(origin IN ('managed','source_hook'))");
+      }
+    });
   }
 
   private transaction<T>(operation: () => T): T {
@@ -241,6 +247,28 @@ export class Store {
     });
   }
 
+  private controllableInteraction(session: Session, interaction: Interaction): void {
+    if (interaction.origin !== 'source_hook') return this.controllable(session);
+    if (!this.getSetting('remoteControlEnabled', true)) conflict('CONTROL_DISABLED', 'Uzaktan kontrol kapalı.');
+    if (session.source !== 'imported' || session.controlEnabled || !this.sourceHooks.has(interaction.id) || !this.getSetting(`sourceQuestions:${session.id}`, false)) conflict('SOURCE_HOOK_DISCONNECTED', 'Kaynak soru bağlantısı artık etkin değil.');
+  }
+
+  disconnectSourceHook(id: string): void {
+    this.sourceHooks.delete(id);
+    const interaction = this.getInteraction(id);
+    if (!interaction || interaction.origin !== 'source_hook') return;
+    if (!interaction.appliedAt) {
+      this.db.prepare("UPDATE interactions SET status = 'cancelled' WHERE id = ? AND status IN ('pending','answered')").run(id);
+      this.event('interaction.cancelled', interaction.sessionId, { interaction: this.getInteraction(id)! });
+    }
+    const session = this.getSession(interaction.sessionId);
+    if (session?.source === 'imported' && session.generation === interaction.generation && !this.listInteractions(session.id).some(item => item.status === 'pending')) this.updateSession(session.id, { state: 'offline' });
+  }
+
+  resetSourceHooks(): void {
+    for (const item of this.listInteractions().filter(item => item.origin === 'source_hook' && !item.appliedAt && ['pending', 'answered'].includes(item.status))) this.disconnectSourceHook(item.id);
+  }
+
   recordSessionCost(id: string, generation: string, costUsd: number | null): void {
     if (costUsd !== null && (typeof costUsd !== 'number' || !Number.isFinite(costUsd) || costUsd < 0)) throw new AppError(400, 'INVALID_COST', 'Maliyet tahmini geçersiz.');
     this.transaction(() => {
@@ -361,13 +389,16 @@ export class Store {
     return this.transaction(() => {
       const session = this.requiredSession(input.sessionId);
       if (session.generation !== input.generation) conflict('STALE_GENERATION', 'Oturum nesli değişti.');
+      if (input.origin === 'source_hook' && (session.source !== 'imported' || session.controlEnabled || !this.getSetting('remoteControlEnabled', true) || !this.getSetting(`sourceQuestions:${session.id}`, false))) conflict('SOURCE_HOOK_DISABLED', 'Kaynak soru bağlantısı etkin değil.');
       const existing = this.db.prepare('SELECT * FROM interactions WHERE sessionId = ? AND generation = ? AND requestId = ?').get(input.sessionId, input.generation, input.requestId);
       if (existing) {
         if (existing.contentHash !== contentHash) conflict('INTERACTION_MISMATCH', 'Aynı istek kimliği farklı içerikle kullanıldı.');
+        if (input.origin === 'source_hook') conflict('SOURCE_HOOK_DUPLICATE', 'Kaynak sorusu daha önce kaydedildi; eski yanıt tekrar gönderilmez.');
         return interactionRow(existing);
       }
-      const interaction: Interaction = { ...input, id: randomUUID(), input: JSON.parse(serializedInput) as Record<string, unknown>, contentHash, status: 'pending', createdAt: now(), expiresAt: new Date(expiry).toISOString(), decision: null, decidedBy: null, appliedAt: null };
-      this.db.prepare('INSERT INTO interactions (id,sessionId,generation,requestId,contentHash,kind,toolName,input,status,createdAt,expiresAt,decision,decidedBy,appliedAt) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(interaction.id, input.sessionId, input.generation, input.requestId, contentHash, input.kind, input.toolName, serializedInput, interaction.status, interaction.createdAt, interaction.expiresAt, null, null, null);
+      const interaction: Interaction = { ...input, origin: input.origin ?? 'managed', id: randomUUID(), input: JSON.parse(serializedInput) as Record<string, unknown>, contentHash, status: 'pending', createdAt: now(), expiresAt: new Date(expiry).toISOString(), decision: null, decidedBy: null, appliedAt: null };
+      this.db.prepare('INSERT INTO interactions (id,sessionId,generation,requestId,contentHash,kind,toolName,input,status,createdAt,expiresAt,decision,decidedBy,appliedAt,origin) VALUES (?,?,?,?,?,?,?,?,?,?,?,?,?,?,?)').run(interaction.id, input.sessionId, input.generation, input.requestId, contentHash, input.kind, input.toolName, serializedInput, interaction.status, interaction.createdAt, interaction.expiresAt, null, null, null, interaction.origin!);
+      if (interaction.origin === 'source_hook') this.sourceHooks.add(interaction.id);
       this.updateSession(input.sessionId, { state: input.kind === 'question' ? 'waiting_answer' : 'permission_required' });
       this.event('interaction.created', input.sessionId, { interaction });
       return interaction;
@@ -402,7 +433,7 @@ export class Store {
         const answers = input.decision.answers ?? {};
         if (!Array.isArray(questions) || !questions.length || questions.some(q => !q || typeof q.question !== 'string' || !answers[q.question]?.trim()) || Object.keys(answers).some(key => !questions.some(q => q.question === key))) throw new AppError(400, 'ANSWERS_REQUIRED', 'Her soru için geçerli bir yanıt gereklidir.');
       }
-      this.controllable(session);
+      this.controllableInteraction(session, interaction);
       const result = this.db.prepare("UPDATE interactions SET status = 'answered', decision = ?, decidedBy = ? WHERE id = ? AND status = 'pending'").run(serializedDecision, input.deviceId, id);
       if (result.changes !== 1) conflict('INTERACTION_ALREADY_DECIDED', 'İstek zaten yanıtlandı.');
       const decided = this.getInteraction(id)!;
@@ -420,7 +451,7 @@ export class Store {
       if (interaction.status !== 'answered') conflict('INTERACTION_NOT_ANSWERED', 'İstek uygulanabilir bir yanıt içermiyor.');
       if (interaction.appliedAt !== null) conflict('INTERACTION_ALREADY_APPLIED', 'Karar zaten uygulandı.');
       if (Date.parse(interaction.expiresAt) <= Date.now()) conflict('INTERACTION_EXPIRED', 'İsteğin süresi doldu.');
-      this.controllable(session);
+      this.controllableInteraction(session, interaction);
       this.db.prepare('UPDATE interactions SET appliedAt = ? WHERE id = ? AND appliedAt IS NULL').run(now(), id);
       const updated = this.getInteraction(id)!;
       this.event('interaction.applied', interaction.sessionId, { interaction: updated });

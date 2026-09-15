@@ -20,7 +20,7 @@ export function decisionBlock(item: Interaction, session: Session | undefined, n
   if (item.status === 'cancelled') return 'Bu istek iptal edildi.';
   if (item.status === 'expired' || Date.parse(item.expiresAt) <= now) return 'Bu isteğin süresi doldu.';
   if (!session || session.generation !== item.generation) return 'Oturumun süreç nesli değişti. Bu eski istek yanıtlanamaz.';
-  if (!session.controlEnabled) return 'Bu oturumda kontrol yetkisi etkin değil.';
+  if (!session.controlEnabled && !(item.origin === 'source_hook' && session.source === 'imported')) return 'Bu oturumda kontrol yetkisi etkin değil.';
   return null;
 }
 export function readDraft(sessionId: string): string {

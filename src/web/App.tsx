@@ -51,8 +51,8 @@ export function Modal({ title, onClose, children, busy = false }: { title: strin
 }
 
 export function StatusBadge({ state, source }: { state: Session['state']; source?: Session['source'] }) {
-  if (source === 'imported') return <span className="badge muted"><LockKeyhole size={13} />Yalnız izleme</span>;
   const waiting = state === 'waiting_answer' || state === 'permission_required';
+  if (source === 'imported' && !waiting) return <span className="badge muted"><LockKeyhole size={13} />Yalnız izleme</span>;
   return <span className={`badge ${waiting || state === 'delivery_unknown' ? 'warning' : state === 'working' ? 'info' : state === 'offline' ? 'muted' : 'success'}`}>
     {waiting ? <Bell size={13} /> : state === 'working' ? <Activity size={13} /> : state === 'offline' ? <WifiOff size={13} /> : state === 'delivery_unknown' ? <AlertCircle size={13} /> : <Check size={13} />}
     {sessionLabels[state]}

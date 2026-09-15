@@ -7,6 +7,9 @@ import { createApp } from '../dist/server/app.js';
 import { Store } from '../dist/server/store.js';
 import { Auth } from '../dist/server/auth.js';
 import { providerFailureText } from '../dist/runtime/provider-failure.js';
+import { SourceHooks } from '../dist/server/source-hooks.js';
+import { connect } from 'node:net';
+import { randomUUID } from 'node:crypto';
 
 // Geçici veriler; canlı model çağrısı veya üretim girişini atlayan yol yoktur.
 const dir = mkdtempSync(path.join(tmpdir(), 'intrem-browser-'));
@@ -18,7 +21,9 @@ const projectTitle = 'Pilot uygulama · Uzun proje adlarıyla mobil okuma ve yaz
 const sessionTitle = 'Mobil kontrol pilotu · Uzun oturum başlığıyla konuşma alanı ve taslak görünürlüğü';
 const store = new Store(config.dbPath), auth = new Auth(store.db);
 const bootstrap = auth.resetBootstrap();
-const app = await createApp({ config, store, auth });
+const socketPath = process.platform === 'win32' ? `\\\\.\\pipe\\intrem-browser-${randomUUID()}` : path.join(dir, 'browser-hook.sock');
+const sourceHooks = new SourceHooks(config, store, { socketPath, pollMs: 30, verify: async () => {}, identity: async () => ({ parent: 42, start: '100' }) });
+const app = await createApp({ config, store, auth, sourceHooks });
 let browser;
 const errors = [];
 const waitFor = async (condition, label) => {
@@ -398,6 +403,26 @@ try {
   assert.equal(await importedDraft.inputValue(), 'Kaynak oturum devredilene kadar saklanacak mobil taslak.', 'read-only draft survives reload');
   assert.equal(store.listMessages(imported.id).length, 1, 'reading and writing a draft never submit to the source');
   assert.equal(store.getSession(imported.id).controlEnabled, false, 'UI layout actions never take control of the source');
+  await page.setViewportSize({ width: 375, height: 667 });
+  await page.getByRole('button', { name: 'Canlı sorular', exact: true }).click();
+  await page.getByRole('dialog', { name: 'Kaynak oturumun canlı soruları' }).waitFor();
+  await page.keyboard.press('Escape');
+  store.setSetting(`sourceQuestions:${imported.id}`, true);
+  const liveSocket = connect(socketPath);
+  const sourceAnswer = new Promise((resolve, reject) => { let text = ''; liveSocket.on('data', chunk => { text += chunk; }); liveSocket.on('close', () => { try { resolve(JSON.parse(text)); } catch (error) { reject(error); } }); liveSocket.on('error', reject); });
+  liveSocket.write(JSON.stringify({ hookPid: 43, hook: { hook_event_name: 'PreToolUse', tool_name: 'AskUserQuestion', tool_use_id: 'live-browser-question', session_id: imported.claudeSessionId, cwd: dir, tool_input: { questions: [{ question: 'Canlı kaynak için hangi değişiklik?', options: [{ label: 'Yalnız ikinci değişiklik', description: 'Sentetik deneme seçimi.' }, { label: 'Beklet', description: 'Değişikliği beklet.' }] }] } } }) + '\n');
+  await waitFor(() => store.listInteractions(imported.id).some(item => item.origin === 'source_hook' && item.status === 'pending'), 'live source hook registration');
+  await page.locator('.pending-inline').getByRole('button', { name: /İncele/ }).click();
+  const sourceDialog = page.getByRole('dialog', { name: 'Claude cevabınızı bekliyor' });
+  await sourceDialog.getByRole('radio', { name: /Yalnız ikinci değişiklik/ }).check();
+  await sourceDialog.getByRole('button', { name: /Yanıtı gönder/ }).scrollIntoViewIfNeeded();
+  const sourceBounds = await sourceDialog.evaluate(node => ({ width: node.getBoundingClientRect().width, scroll: node.scrollWidth, client: node.clientWidth }));
+  assert.ok(sourceBounds.width <= 375 && sourceBounds.scroll <= sourceBounds.client + 1, 'live question fits a phone without horizontal overflow');
+  await page.screenshot({ path: path.join(output, 'source-live-answer-mobile.png') });
+  await sourceDialog.getByRole('button', { name: /Yanıtı gönder/ }).click();
+  assert.deepEqual(await sourceAnswer, { behavior: 'allow', answers: { 'Canlı kaynak için hangi değişiklik?': 'Yalnız ikinci değişiklik' } });
+  assert.equal(store.getSession(imported.id).controlEnabled, false, 'source answers never enable normal message input');
+  assert.equal(store.listMessages(imported.id).length, 1, 'live source answer is not enqueued as a chat message');
   await page.setViewportSize({ width: 390, height: 844 });
   await page.getByRole('button', { name: 'Oturum listesine dön', exact: true }).click();
   assert.equal(await page.getByRole('navigation', { name: 'Mobil ana gezinme' }).isVisible(), true, 'returning to the list restores mobile navigation');
@@ -494,6 +519,7 @@ try {
   abort.abort();
   await waitFor(async () => (await page.getByRole('heading', { name: /Çalışmanıza bağlanın|İlk cihazınızı bağlayın/ }).count()) > 0, 'cihaz iptali');
   assert.deepEqual(errors, []);
+  console.log(JSON.stringify({ ok: true, sourceQuestionChecks: ['source-setup-dialog-mobile', 'source-question-mobile-answer-to-socket', 'source-answer-keeps-messages-disabled'] }));
   console.log(JSON.stringify({ ok: true, checks: ['passkey-register', 'project-session-ui', 'question-answer', 'plan-content-confirmation', 'missing-plan-denied', 'keyboard-dialog-focus-return', 'keyboard-question-and-settings', 'mobile-send-visible', 'project-push-preference', 'responsive-320-1440', 'offline-disable', 'SSE-replay-cursor', 'device-revoke-SSE', 'unknown-delivery-reload-idempotency', 'review-request-ui', 'public-guide-and-auth-return', 'guide-keyboard-and-touch', 'guide-responsive-theme-zoom', 'short-viewport-composer', 'provider-failure-mobile-reload', 'gateway-setup-mobile-counts-and-access', 'PWA-offline-reload-and-cache-boundary', 'cost-estimate-states-mobile-reload', 'independent-desktop-panels', 'focus-reader-and-draft-toggle', 'compact-header-reading-area', 'imported-readonly-mobile-keyboard', 'long-title-text-and-code-containment'], screenshots: output }));
 } finally {
   await browser?.close();
